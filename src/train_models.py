@@ -14,6 +14,7 @@ from sklearn.metrics import f1_score, accuracy_score, log_loss, confusion_matrix
 
 # Algorithm Families
 from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -52,14 +53,26 @@ def load_datasets():
     train_csv = os.path.join(ARTIFACTS_DIR, "train_features.csv.gz")
     test_csv = os.path.join(ARTIFACTS_DIR, "test_features.csv.gz")
     
-    if os.path.exists(train_parquet):
-        train_df = pd.read_parquet(train_parquet)
-        test_df = pd.read_parquet(test_parquet)
-    elif os.path.exists(train_csv):
+    if os.path.exists(train_parquet) and os.path.exists(test_parquet):
+        try:
+            train_df = pd.read_parquet(train_parquet)
+            test_df = pd.read_parquet(test_parquet)
+            return train_df, test_df
+        except ImportError as exc:
+            if not (os.path.exists(train_csv) and os.path.exists(test_csv)):
+                raise ImportError(
+                    "Parquet files exist but no Parquet engine is installed, and compressed CSV "
+                    "fallbacks are missing. Run src/preprocessor.py to generate CSV fallbacks "
+                    "or install pyarrow."
+                ) from exc
+
+    if os.path.exists(train_csv) and os.path.exists(test_csv):
         train_df = pd.read_csv(train_csv)
         test_df = pd.read_csv(test_csv)
     else:
-        raise FileNotFoundError("Preprocessed feature files not found! Run src/preprocessor.py first.")
+        raise FileNotFoundError(
+            "Preprocessed feature files not found! Run src/preprocessor.py first."
+        )
         
     return train_df, test_df
 
@@ -129,12 +142,17 @@ def load_all_trip_arcs():
 
 
 def get_model_definitions():
-    """Defines 5 models representing distinct algorithm families."""
+    """Defines models representing distinct algorithm families."""
     models = {
         "Logistic Regression": {
             "family": "Linear and Probabilistic",
             "key_config": "C=1.0, solver='lbfgs', max_iter=500",
             "model": LogisticRegression(C=1.0, solver="lbfgs", max_iter=500, random_state=42)
+        },
+        "Gaussian Naive Bayes": {
+            "family": "Probabilistic",
+            "key_config": "var_smoothing=1e-9",
+            "model": GaussianNB(var_smoothing=1e-9)
         },
         "K-Nearest Neighbors": {
             "family": "Instance-based",
