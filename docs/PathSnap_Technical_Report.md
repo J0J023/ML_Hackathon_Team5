@@ -189,19 +189,26 @@ The figure below presents static exported views for **Train Trip 00000001** (raw
 - **Laptop 1 (FastAPI Server — `src/api.py`):** Loads the trained model and `feature_transform.json`, exposes `POST /predict` (`uvicorn src.api:app --host 0.0.0.0 --port 8000`), runs feature extraction + classifier scoring + Viterbi decoding, and computes accuracy against `.route` server-side without exposing ground-truth labels to the client.
 - **Laptop 2 (Evaluator UI — `ui/index.html`):** Displays the 10 official reserved evaluation trips (`00000015, 00000017, 00000023, 00000030, 00000049, 00000059, 00000067, 00000073, 00000087, 00000094`), sends the selected `trip_id` to Laptop 1 over the local network via `POST /predict`, and displays the returned route coordinates on an interactive OpenStreetMap Leaflet canvas.
 
-### 7.1 Successful API Response & Server CMD Terminal Log
-Below is the actual server-side CMD output on Laptop 1 (`10.0.10.221`) handling a live request from Laptop 2 (`10.0.14.167`) for evaluation Trip `00000049`:
+### 7.1 Working Evaluator UI (Laptop 2 Client)
+As mandated by Section 7 of the Hackathon Deliverables, the figure below captures the live evaluator interface running on Laptop 2 requesting evaluation trip `00000015` from Laptop 1, displaying live metrics (73.72% HMM Viterbi accuracy, 99.85% route continuity, 5725.9 ms latency) and the interactive Leaflet map canvas:
+
+![PathSnap Evaluator Interface UI](../artifacts/plots/evaluator_ui_screenshot.jpg)
+
+### 7.2 Successful API Response & Server CMD Terminal Output
+Below is the actual server-side CMD output on Laptop 1 handling live evaluation requests from Laptop 2 (`10.0.13.67`) for reserved evaluation Trip `00000094`:
+
+![Server CMD Terminal Output](../artifacts/plots/evaluator_cmd_terminal.jpg)
 
 ```text
-[15:08:19] [INCOMING REQUEST] POST /predict from 10.0.14.167 | Trip ID: '00000049' (Resolved: evaluator_test)
-[15:08:19] [STAGE 1/4] Loading road network and GPS trajectory from: ./evaluator_test/00000049
-[15:08:19] [STAGE 1/4] Loaded 23,165 nodes, 47,542 road arcs, 2,642 valid GPS observations
-[15:08:19] [STAGE 2/4] Generating candidate road segments via KD-Tree spatial indexing (R = 60m)...
-[15:08:19] [STAGE 2/4] Generated 15,629 candidates in 587.5 ms (Candidate Miss Rate: 0.15%)
-[15:08:20] [STAGE 3/4] Transforming 13 invariant features and scoring with Random Forest...
-[15:08:20] [STAGE 3/4] Model probability scoring completed in 217.9 ms
-[15:08:20] [STAGE 4/4] Executing HMM Viterbi trellis dynamic programming in log-space...
-[15:08:20] [STAGE 4/4] Viterbi decoded 2,642 arcs in 545.3 ms | Route Continuity: 99.43%
-[15:08:21] [EVALUATION] Ground Truth Match: Classifier 96.44% -> Viterbi 99.32% (Gain: +2.88%)
-[15:08:21] [DISPATCH 200] Dispatched 2,642 points to 10.0.14.167 in 2048.3 ms total
+[15:46:18] [INCOMING REQUEST] POST /predict from 10.0.13.67 | Trip ID: '00000094' (Resolved: evaluator_test)
+[15:46:18] [STAGE 1/4] Loading road network and GPS trajectory from: /Users/bane/Downloads/mlhack/evaluator_test/00000094
+[15:46:18] [STAGE 1/4] Loaded 6,815 nodes, 14,931 road arcs, 3,230 valid GPS observations
+[15:46:18] [STAGE 2/4] Generating candidate road segments via KD-Tree spatial indexing (R = 60m)...
+[15:46:19] [STAGE 2/4] Generated 33,587 candidates in 787.2 ms (Candidate Miss Rate: 1.39%)
+[15:46:19] [STAGE 3/4] Transforming 13 invariant features and scoring with Random Forest...
+[15:46:19] [STAGE 3/4] Model probability scoring completed in 298.7 ms
+[15:46:19] [STAGE 4/4] Executing HMM Viterbi trellis dynamic programming in log-space...
+[15:46:20] [STAGE 4/4] Viterbi decoded 3,230 arcs in 1088.7 ms | Route Continuity: 98.61%
+[15:46:21] [EVALUATION] Ground Truth Match: Classifier 74.58% -> Viterbi 86.44% (Gain: +11.86%)
+[15:46:21] [DISPATCH 200] Dispatched 3,230 points to 10.0.13.67 in 3101.7 ms total
 ```
