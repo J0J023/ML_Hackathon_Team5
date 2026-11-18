@@ -14,10 +14,10 @@ from sklearn.metrics import f1_score, accuracy_score, log_loss, confusion_matrix
 
 # Algorithm Families
 from sklearn.linear_model import LogisticRegression
-from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")
@@ -142,17 +142,12 @@ def load_all_trip_arcs():
 
 
 def get_model_definitions():
-    """Defines models representing distinct algorithm families."""
+    """Defines 5 models representing distinct algorithm families."""
     models = {
         "Logistic Regression": {
             "family": "Linear and Probabilistic",
             "key_config": "C=1.0, solver='lbfgs', max_iter=500",
             "model": LogisticRegression(C=1.0, solver="lbfgs", max_iter=500, random_state=42)
-        },
-        "Gaussian Naive Bayes": {
-            "family": "Probabilistic",
-            "key_config": "var_smoothing=1e-9",
-            "model": GaussianNB(var_smoothing=1e-9)
         },
         "K-Nearest Neighbors": {
             "family": "Instance-based",
@@ -168,6 +163,22 @@ def get_model_definitions():
             "family": "Ensemble",
             "key_config": "n_estimators=100, max_depth=14",
             "model": RandomForestClassifier(n_estimators=100, max_depth=14, n_jobs=-1, random_state=42)
+        },
+        "Multi-Layer Perceptron": {
+            "family": "Neural Networks",
+            "key_config": "hidden_layer_sizes=(64, 32), max_iter=150, early_stopping=True",
+            "model": MLPClassifier(
+                hidden_layer_sizes=(64, 32),
+                activation="relu",
+                solver="adam",
+                alpha=0.0001,
+                batch_size=512,
+                learning_rate_init=0.001,
+                max_iter=150,
+                early_stopping=True,
+                n_iter_no_change=10,
+                random_state=42
+            )
         }
     }
     return models
@@ -269,6 +280,10 @@ def run_model_benchmark():
         model_path = os.path.join(MODELS_DIR, model_filename)
         joblib.dump(model, model_path)
         trained_models[name] = model
+
+        # If MLP, plot epoch-wise loss progression (Mandatory Section 3.3)
+        if name == "Multi-Layer Perceptron":
+            plot_mlp_training_curve(model)
         
         res = {
             "Model": name,
@@ -308,24 +323,79 @@ def run_model_benchmark():
     return results_df
 
 
+def plot_mlp_training_curve(mlp_model):
+    """
+    Plots genuine training loss progression across epochs for MLPClassifier,
+    fulfilling the mandatory Section 3.3 requirement:
+    'Training and validation loss plots only for models that produce epoch-wise training histories.'
+    """
+    if not hasattr(mlp_model, "loss_curve_"):
+        return
+        
+    epochs = list(range(1, len(mlp_model.loss_curve_) + 1))
+    
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    color = "#d95f02"
+    ax1.set_xlabel("Epoch / Iteration", fontsize=11, fontweight="bold")
+    ax1.set_ylabel("Cross-Entropy Loss", color=color, fontsize=11, fontweight="bold")
+    line1 = ax1.plot(epochs, mlp_model.loss_curve_, marker="o", markersize=3, color=color, linewidth=2, label="Training Loss")
+    ax1.tick_params(axis="y", labelcolor=color)
+    ax1.grid(True, linestyle=":", alpha=0.6)
+    
+    lines = line1
+    labels = [l.get_label() for l in lines]
+    
+    if hasattr(mlp_model, "validation_scores_") and mlp_model.validation_scores_:
+        ax2 = ax1.twinx()
+        color2 = "#1b9e77"
+        ax2.set_ylabel("Validation Accuracy", color=color2, fontsize=11, fontweight="bold")
+        line2 = ax2.plot(epochs[:len(mlp_model.validation_scores_)], mlp_model.validation_scores_, marker="s", markersize=3, color=color2, linestyle="--", linewidth=2, label="Validation Accuracy")
+        ax2.tick_params(axis="y", labelcolor=color2)
+        lines = line1 + line2
+        labels = [l.get_label() for l in lines]
+        
+    ax1.legend(lines, labels, loc="upper right", frameon=True, fontsize=10)
+    plt.title("Multi-Layer Perceptron (Neural Network): Epoch Loss Progression", fontsize=12, fontweight="bold", pad=12)
+    plt.tight_layout()
+    
+    loss_plot = os.path.join(PLOTS_DIR, "mlp_training_loss_curve.png")
+    plt.savefig(loss_plot, dpi=300)
+    plt.close()
+    print(f"[+] MLP epoch-wise training loss curve saved: {loss_plot}")
+
+
 def plot_model_comparisons(results_df):
-    """Generates comparison bar plots required by Section 3.3."""
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    """Generates comparison bar plots required by Section 3.3 (F1, Top-1, Log Loss)."""
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     
     # 1. Macro F1 comparison (CV vs Student-Test)
     plot_df = results_df[["Model", "CV Macro F1-score", "Student-Test Macro F1-score"]].melt(
         id_vars="Model", var_name="Metric", value_name="Score"
     )
     sns.barplot(data=plot_df, x="Model", y="Score", hue="Metric", palette=["#4575b4", "#74add1"], ax=axes[0])
-    axes[0].set_title("Cross-Validation vs. Student-Test Macro F1-Score", fontsize=12, fontweight="bold")
+    axes[0].set_title("CV vs. Student-Test Macro F1-Score", fontsize=11, fontweight="bold")
     axes[0].set_ylim(0, 1.05)
-    axes[0].set_xticklabels(axes[0].get_xticklabels(), rotation=20, ha="right")
+    axes[0].set_xticklabels(axes[0].get_xticklabels(), rotation=25, ha="right", fontsize=9)
+    axes[0].grid(axis="y", linestyle=":", alpha=0.6)
     
     # 2. Observation-level Top-1 Accuracy
     sns.barplot(data=results_df, x="Model", y="Top-1 Accuracy", palette="viridis", ax=axes[1])
-    axes[1].set_title("Student-Testing Observation-Level Top-1 Accuracy", fontsize=12, fontweight="bold")
+    axes[1].set_title("Student-Testing Top-1 Accuracy", fontsize=11, fontweight="bold")
     axes[1].set_ylim(0, 1.05)
-    axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=20, ha="right")
+    axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=25, ha="right", fontsize=9)
+    axes[1].grid(axis="y", linestyle=":", alpha=0.6)
+    
+    # 3. Log Loss Comparison (for models with valid log loss)
+    loss_df = results_df.copy()
+    loss_df["Log Loss Numeric"] = pd.to_numeric(loss_df["Log Loss"], errors="coerce")
+    valid_loss = loss_df.dropna(subset=["Log Loss Numeric"])
+    
+    if not valid_loss.empty:
+        sns.barplot(data=valid_loss, x="Model", y="Log Loss Numeric", palette="magma", ax=axes[2])
+        axes[2].set_title("Student-Testing Log Loss (Lower is Better)", fontsize=11, fontweight="bold")
+        axes[2].set_xticklabels(axes[2].get_xticklabels(), rotation=25, ha="right", fontsize=9)
+        axes[2].set_ylabel("Log Loss")
+        axes[2].grid(axis="y", linestyle=":", alpha=0.6)
     
     plt.tight_layout()
     comp_plot = os.path.join(PLOTS_DIR, "model_performance_comparison.png")
