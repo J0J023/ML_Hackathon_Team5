@@ -1,0 +1,102 @@
+{
+  "summary": {
+    "model": "Multi-Layer Perceptron",
+    "trip_count": 10,
+    "mean_classifier_only_accuracy": 0.8224888691590028,
+    "mean_hmm_viterbi_accuracy": 0.8908602960265462,
+    "mean_route_continuity": 0.9701103667342499,
+    "mean_inference_time_ms": 3624.3787
+  },
+  "trips": [
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000015",
+      "observations": 6854,
+      "classifier_only_accuracy": 0.5444995622993872,
+      "hmm_viterbi_accuracy": 0.7133060986285381,
+      "route_continuity": 0.9983948635634029,
+      "inference_time_ms": 12729.532
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000017",
+      "observations": 1346,
+      "classifier_only_accuracy": 0.8640416047548292,
+      "hmm_viterbi_accuracy": 0.9167904903417533,
+      "route_continuity": 0.9130111524163569,
+      "inference_time_ms": 3121.575
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000023",
+      "observations": 458,
+      "classifier_only_accuracy": 0.8799126637554585,
+      "hmm_viterbi_accuracy": 0.9082969432314411,
+      "route_continuity": 0.9584245076586433,
+      "inference_time_ms": 815.197
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000030",
+      "observations": 654,
+      "classifier_only_accuracy": 0.7706422018348624,
+      "hmm_viterbi_accuracy": 0.8073394495412844,
+      "route_continuity": 0.9310872894333844,
+      "inference_time_ms": 1496.092
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000049",
+      "observations": 2642,
+      "classifier_only_accuracy": 0.9625283875851628,
+      "hmm_viterbi_accuracy": 0.9947009841029523,
+      "route_continuity": 0.993563044301401,
+      "inference_time_ms": 3899.976
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000059",
+      "observations": 1031,
+      "classifier_only_accuracy": 0.9088263821532493,
+      "hmm_viterbi_accuracy": 0.9641125121241513,
+      "route_continuity": 0.9495145631067962,
+      "inference_time_ms": 2283.978
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000067",
+      "observations": 916,
+      "classifier_only_accuracy": 0.7281659388646288,
+      "hmm_viterbi_accuracy": 0.8013100436681223,
+      "route_continuity": 0.9923497267759562,
+      "inference_time_ms": 1478.409
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000073",
+      "observations": 1144,
+      "classifier_only_accuracy": 0.909965034965035,
+      "hmm_viterbi_accuracy": 0.9825174825174825,
+      "route_continuity": 0.9930008748906387,
+      "inference_time_ms": 2219.242
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000087",
+      "observations": 1399,
+      "classifier_only_accuracy": 0.9163688348820586,
+      "hmm_viterbi_accuracy": 0.9706933523945676,
+      "route_continuity": 0.9856938483547926,
+      "inference_time_ms": 2850.184
+    },
+    {
+      "model": "Multi-Layer Perceptron",
+      "trip_id": "00000094",
+      "observations": 3230,
+      "classifier_only_accuracy": 0.739938080495356,
+      "hmm_viterbi_accuracy": 0.8495356037151702,
+      "route_continuity": 0.9860637968411273,
+      "inference_time_ms": 5349.602
+    }
+  ]
+}

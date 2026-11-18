@@ -3,60 +3,60 @@
     "Model": "Logistic Regression",
     "Algorithm Family": "Linear and Probabilistic",
     "Key Configuration": "C=1.0, solver='lbfgs', max_iter=500",
-    "CV Macro F1-score": 0.7837,
-    "Top-1 Accuracy": 0.7239,
+    "CV Macro F1-score": 0.7842,
+    "Top-1 Accuracy": 0.7237,
     "Route continuity": "0.0%",
-    "Student-Test Macro F1-score": 0.7954,
-    "Log Loss": 0.2181,
+    "Student-Test Macro F1-score": 0.7957,
+    "Log Loss": 0.2174,
     "Inference Time": "0.000 ms/obs",
-    "Train Time (s)": 0.57
+    "Train Time (s)": 1.9
   },
   {
     "Model": "K-Nearest Neighbors",
     "Algorithm Family": "Instance-based",
     "Key Configuration": "n_neighbors=7, weights='distance'",
-    "CV Macro F1-score": 0.8436,
-    "Top-1 Accuracy": 0.7067,
+    "CV Macro F1-score": 0.8412,
+    "Top-1 Accuracy": 0.7055,
     "Route continuity": "0.0%",
-    "Student-Test Macro F1-score": 0.8201,
-    "Log Loss": 0.7749,
-    "Inference Time": "0.033 ms/obs",
-    "Train Time (s)": 0.04
+    "Student-Test Macro F1-score": 0.819,
+    "Log Loss": 0.7468,
+    "Inference Time": "0.175 ms/obs",
+    "Train Time (s)": 0.16
   },
   {
     "Model": "Decision Tree",
     "Algorithm Family": "Tree-based",
     "Key Configuration": "max_depth=12, min_samples_split=20",
-    "CV Macro F1-score": 0.8534,
-    "Top-1 Accuracy": 0.7904,
+    "CV Macro F1-score": 0.8506,
+    "Top-1 Accuracy": 0.7983,
     "Route continuity": "0.0%",
-    "Student-Test Macro F1-score": 0.8433,
-    "Log Loss": 0.2366,
+    "Student-Test Macro F1-score": 0.8451,
+    "Log Loss": 0.2316,
     "Inference Time": "0.000 ms/obs",
-    "Train Time (s)": 15.06
+    "Train Time (s)": 20.98
   },
   {
     "Model": "Random Forest",
     "Algorithm Family": "Ensemble",
     "Key Configuration": "n_estimators=100, max_depth=14",
-    "CV Macro F1-score": 0.8551,
-    "Top-1 Accuracy": 0.7347,
+    "CV Macro F1-score": 0.8547,
+    "Top-1 Accuracy": 0.7368,
     "Route continuity": "0.0%",
-    "Student-Test Macro F1-score": 0.849,
-    "Log Loss": 0.1466,
-    "Inference Time": "0.001 ms/obs",
-    "Train Time (s)": 43.27
+    "Student-Test Macro F1-score": 0.8504,
+    "Log Loss": 0.1461,
+    "Inference Time": "0.002 ms/obs",
+    "Train Time (s)": 93.23
   },
   {
     "Model": "Multi-Layer Perceptron",
     "Algorithm Family": "Neural Networks",
     "Key Configuration": "hidden_layer_sizes=(64, 32), max_iter=150, early_stopping=True",
-    "CV Macro F1-score": 0.8529,
-    "Top-1 Accuracy": 0.8112,
+    "CV Macro F1-score": 0.8597,
+    "Top-1 Accuracy": 0.8136,
     "Route continuity": "0.0%",
-    "Student-Test Macro F1-score": 0.8508,
-    "Log Loss": 0.1466,
-    "Inference Time": "0.000 ms/obs",
-    "Train Time (s)": 88.45
+    "Student-Test Macro F1-score": 0.8504,
+    "Log Loss": 0.1511,
+    "Inference Time": "0.001 ms/obs",
+    "Train Time (s)": 183.58
   }
 ]

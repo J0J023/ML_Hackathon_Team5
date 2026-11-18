@@ -53,8 +53,10 @@ def live_log(stage: str, message: str, color_code: str = "36"):
 try:
     from .preprocessor import (
         ARTIFACTS_DIR,
+        BASE_DIR,
         FEATURE_COLS,
-        STUDENT_FOLDER,
+        TEST_DIR,
+        TRAIN_DIR,
         clean_gps_track,
         extract_trip_features,
         load_trip_data,
@@ -63,8 +65,10 @@ try:
 except ImportError:
     from preprocessor import (
         ARTIFACTS_DIR,
+        BASE_DIR,
         FEATURE_COLS,
-        STUDENT_FOLDER,
+        TEST_DIR,
+        TRAIN_DIR,
         clean_gps_track,
         extract_trip_features,
         load_trip_data,
@@ -73,7 +77,8 @@ except ImportError:
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MODELS_DIR = os.path.join(ARTIFACTS_DIR, "models")
-MODEL_PATH = os.path.join(MODELS_DIR, "random_forest.joblib")
+MODEL_NAME = "Multi-Layer Perceptron"
+MODEL_PATH = os.path.join(MODELS_DIR, "multi-layer_perceptron.joblib")
 TRANSFORM_PATH = os.path.join(MODELS_DIR, "feature_transform.json")
 EVALUATOR_DIR = os.path.join(REPO_ROOT, "evaluator_test")
 UI_DIR = os.path.join(REPO_ROOT, "ui")
@@ -141,7 +146,7 @@ class TripPredictionResponse(BaseModel):
 def load_inference_assets():
     if not os.path.isfile(MODEL_PATH):
         raise FileNotFoundError(
-            f"Trained Random Forest not found at {MODEL_PATH}. Run src/train_models.py first."
+            f"Trained {MODEL_NAME} not found at {MODEL_PATH}. Run src/train_models.py first."
         )
     if not os.path.isfile(TRANSFORM_PATH):
         raise FileNotFoundError(
@@ -157,7 +162,7 @@ def load_inference_assets():
         raise ValueError("Saved API classifier must support predict_proba and class 1.")
     if getattr(model, "n_features_in_", None) != len(FEATURE_COLS):
         raise ValueError(
-            "Saved Random Forest was trained with a different feature schema. "
+            f"Saved {MODEL_NAME} was trained with a different feature schema. "
             "Run src/train_models.py to retrain it."
         )
     return model, transform
