@@ -65,7 +65,9 @@ ML_Hackathon/
 │   ├── preprocessor.py                # Candidate generator & feature engineering
 │   └── train_models.py                # GroupKFold cross-validation & model benchmarks
 ├── notebooks/
-│   └── decision_tree_pipeline.ipynb   # Complete Decision Tree training & evaluation walkthrough
+│   ├── decision_tree_pipeline.ipynb   # Decision Tree training & evaluation walkthrough
+│   ├── logistic_regression_pipeline.ipynb # Logistic Regression training & evaluation
+│   └── gaussian_naive_bayes_pipeline.ipynb # Gaussian Naive Bayes training & evaluation
 ├── requirements.txt
 ├── README.md
 └── .gitignore
