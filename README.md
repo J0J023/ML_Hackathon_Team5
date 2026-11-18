@@ -13,7 +13,23 @@ GPS tracking systems inherently suffer from urban canyon multipath reflections, 
 
 ---
 
-## 2. System Pipeline
+## 2. Deliverables Checklist (Evaluation & Submission Matrix)
+
+All components required by the Hackathon Guidelines and Deliverables Rubric are implemented, benchmarked, and verified:
+
+| Component | Guideline Requirement | Repository Location | Status |
+| :--- | :--- | :--- | :---: |
+| **Bayesian optimisation implementation** | Bayesian hyperparameter optimisation & final tuned model | `src/bayesian_opt_mlp.py`, `artifacts/models/mlp_classifier_tuned.joblib`, `artifacts/optuna_mlp_trials.csv` | ✅ **Complete** |
+| **HMM and Viterbi implementation** | Complete route reconstruction implementation & comparison against classifier-only predictions | `src/hmm_decoder.py`, `notebooks/hmm_viterbi_pipeline.ipynb`, `artifacts/hmm_comparison_table.csv` | ✅ **Complete** |
+| **API implementation** | FastAPI backend that processes evaluation requests with live terminal logs | `src/api.py` (CORS enabled, live stage CMD streaming, evaluator trip resolution) | ✅ **Complete** |
+| **UI implementation** | User interface that communicates with the API and displays evaluation results & maps | `ui/index.html` (10 evaluator trip buttons, random trip generator, Leaflet map, scorecards) & `ui/app.py` | ✅ **Complete** |
+| **Model & configuration artifacts** | Final models, preprocessing components, HMM configuration & inference assets | `artifacts/models/` (`random_forest.joblib`, `decision_tree.joblib`, `mlp_classifier_tuned.joblib`, `feature_transform.json`) | ✅ **Complete** |
+| **Technical report (PDF)** | Methodology, experiments, results, graphs, tables, geographical visualisations, analysis | `docs/PathSnap_Technical_Report.pdf` & `docs/PathSnap_Technical_Report.md` | ✅ **Complete** |
+| **GitHub repository** | Complete project repository with source code, dependencies, and README | Fully committed & synced on `origin/main` (`requirements.txt`, `README.md`) | ✅ **Complete** |
+
+---
+
+## 3. System Architecture & Work Process
 
 ```
 [Raw GPS Track (.track) + Road Network (.nodes, .arcs)]
@@ -40,15 +56,13 @@ GPS tracking systems inherently suffer from urban canyon multipath reflections, 
 
 ---
 
-## 3. Repository Structure
+## 4. Repository Structure
 
 ```
 ML_Hackathon_Team5/
 ├── docs/
 │   ├── PathSnap_Technical_Report.md     # Full consolidated technical report (Markdown)
-│   └── PathSnap_Technical_Report.pdf    # Consolidated technical report (PDF deliverable)
-├── report/
-│   └── technical_report.pdf             # Deliverable 2: Consolidated Technical Report PDF
+│   └── PathSnap_Technical_Report.pdf    # Deliverable 2: Consolidated Technical Report PDF
 ├── notebooks/                           # Executed model & analysis notebooks
 │   ├── decision_tree_pipeline.ipynb
 │   ├── random_forest_pipeline.ipynb
@@ -68,8 +82,7 @@ ML_Hackathon_Team5/
 │   ├── bayesian_opt_mlp.py              # Optuna Bayesian hyperparameter optimization
 │   ├── hmm_decoder.py                   # HMM Viterbi trellis dynamic programming
 │   ├── eda.py                           # Exploratory Data Analysis & Folium generator
-│   ├── generate_report_plots.py         # Diagnostic & comparison visualisations
-│   └── generate_pdf_report.py           # Automated compiler for Technical Report PDF
+│   └── generate_report_plots.py         # Diagnostic & comparison visualisations
 ├── artifacts/
 │   ├── dataset_inventory.csv            # Audit of all 90 trip partitions
 │   ├── eda_summary.json                 # Key dataset statistics and sampling properties
@@ -114,7 +127,7 @@ ML_Hackathon_Team5/
 
 ---
 
-## 4. Two-Laptop Deployment Setup (Evaluation Instructions)
+## 5. Two-Laptop Deployment Setup (Evaluation Instructions)
 
 As mandated by Section 3 & 6 of the Hackathon Guidelines, PathSnap is split across two distinct machines on the same local network:
 
@@ -137,25 +150,27 @@ Laptop 1 hosts the trained model, feature scalers, HMM/Viterbi engine, road netw
    *The server listens on all interfaces (`0.0.0.0`) with CORS enabled (`allow_origins=["*"]`).*
 
 3. **Keep the Terminal (CMD) Visible for Evaluators**:
-   Every time an inference request arrives, the terminal prints live formatted logs:
-   ```
+   Every time an inference request arrives, the terminal prints live formatted logs showing each execution stage in real time:
+   ```text
    ================================================================================
-     [PATHSNAP INFERENCE REQUEST] 2026-11-18 14:48:01
-     Client Host : 192.168.1.105 (Laptop 2)
-     Target Trip : 00000015 (Resolved partition: evaluator_test)
-   --------------------------------------------------------------------------------
-     Nodes : 1,571 | Arcs : 3,225 | GPS Points : 6,854 | Candidates : 57,769
-     Classifier-Only Top-1 Acc    : 53.63%
-     HMM Viterbi Decoded Acc      : 73.72% (Gain: +20.09%)
-     Reconstructed Route Continuity: 99.85%
-     Total Processing Latency     : 5706.62 ms (Viterbi: 1936.34 ms)
+   [14:58:03] [INCOMING REQUEST] POST /predict from 192.168.1.105 | Trip ID: '00000023' (Resolved: evaluator_test)
+   [14:58:04] [STAGE 1/4] Loading road network and GPS trajectory from: ./evaluator_test/00000023
+   [14:58:04] [STAGE 1/4] Loaded 5,053 nodes, 10,596 road arcs, 458 valid GPS observations
+   [14:58:04] [STAGE 2/4] Generating candidate road segments via KD-Tree spatial indexing (R = 60m)...
+   [14:58:04] [STAGE 2/4] Generated 3,314 candidates in 111.3 ms (Candidate Miss Rate: 3.06%)
+   [14:58:04] [STAGE 3/4] Transforming 13 invariant features and scoring with Random Forest...
+   [14:58:04] [STAGE 3/4] Model probability scoring completed in 58.7 ms
+   [14:58:04] [STAGE 4/4] Executing HMM Viterbi trellis dynamic programming in log-space...
+   [14:58:04] [STAGE 4/4] Viterbi decoded 458 arcs in 110.1 ms | Route Continuity: 95.84%
+   [14:58:05] [EVALUATION] Ground Truth Match: Classifier 89.30% -> Viterbi 90.83% (Gain: +1.53%)
+   [14:58:05] [DISPATCH 200] Dispatched 458 points to 192.168.1.105 in 1278.0 ms total
    ================================================================================
    ```
 
 ---
 
 ### Laptop 2: Evaluator User Interface (Client)
-Laptop 2 provides the evaluator interface displaying buttons for the **10 evaluation trips**, live scorecards, and interactive Leaflet map.
+Laptop 2 provides the evaluator interface displaying buttons for the **10 evaluation trips**, live scorecards, interactive Leaflet map, and live CMD terminal mirror.
 
 **Option A (Direct in Browser — Zero Install on Laptop 2)**:
 1. Open Google Chrome or any modern browser on Laptop 2.
@@ -171,7 +186,7 @@ Laptop 2 provides the evaluator interface displaying buttons for the **10 evalua
 
 ---
 
-## 5. Live Demonstration on the 10 Evaluator Trips
+## 6. Live Demonstration on the 10 Evaluator Trips
 
 The evaluator may click **ANY** of the 10 evaluation trips randomly, or click the **🎲 Random Evaluator Trip** button:
 
@@ -192,7 +207,7 @@ The evaluator may click **ANY** of the 10 evaluation trips randomly, or click th
 
 ---
 
-## 6. Model Comparison & Bayesian Hyperparameter Optimization
+## 7. Model Comparison & Bayesian Hyperparameter Optimization
 
 ### A. Phase 1 Model Benchmark (5 Model Families)
 | Model | Algorithm Family | Key Configuration | CV Macro F1 | Student Top-1 Acc | Student Macro F1 | Log Loss | Latency |
@@ -211,7 +226,7 @@ Bayesian optimization was executed across 25 trials using Optuna's Tree-structur
 
 ---
 
-## 7. Interactive Maps & Tile Error Fix
+## 8. Interactive Maps & Tile Error Fix
 
 All Folium and Leaflet maps in the repository strictly utilize **OpenStreetMap standard tiles** (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`).
 * This eliminates CartoDB API deprecation 403 Forbidden / "Access Blocked" errors.
@@ -221,8 +236,8 @@ All Folium and Leaflet maps in the repository strictly utilize **OpenStreetMap s
 
 ---
 
-## 8. Deliverable 2: Technical Report (PDF)
+## 9. Deliverable 2: Technical Report (PDF)
 
 The consolidated technical report adheres to all requirements in `Deliverables.pdf` and is available at:
 * [`docs/PathSnap_Technical_Report.pdf`](docs/PathSnap_Technical_Report.pdf)
-* [`report/technical_report.pdf`](report/technical_report.pdf)
+* [`docs/PathSnap_Technical_Report.md`](docs/PathSnap_Technical_Report.md)
