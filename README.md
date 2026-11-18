@@ -28,7 +28,7 @@ GPS tracking systems inherently suffer from urban canyon multipath reflections, 
 [3. Tree-Based ML Scoring Model] (Decision Tree Classifier)
            │
            ▼ (Candidate emission probabilities)
-[4. HMM & Viterbi Decoder] (Topological transition probabilities via network shortest path vs Euclidean distance)
+[4. HMM & Viterbi Decoder] (Road connectivity and movement-distance consistency)
            │
            ▼
 [Reconstructed Route & Continuous Trajectory]
@@ -61,6 +61,7 @@ ML_Hackathon/
 │       ├── model_confusion_matrices.png
 │       └── tree_feature_importances.png
 ├── src/
+│   ├── api.py                         # FastAPI trip prediction service
 │   ├── eda.py                         # Exploratory Data Analysis & visualizer
 │   ├── preprocessor.py                # Candidate generator & feature engineering
 │   └── train_models.py                # GroupKFold cross-validation & model benchmarks
@@ -132,3 +133,17 @@ the same exported feature columns. The fitted medians and scaling parameters are
 saved in `artifacts/models/feature_transform.json`.
 The benchmark trains Logistic Regression, Gaussian Naive Bayes, K-Nearest
 Neighbors, Decision Tree, and Random Forest models.
+
+### Run the map-matching API
+
+Train the models and build the feature transform first, then start the API from
+the repository root:
+
+```powershell
+uvicorn src.api:app --reload
+```
+
+Open `http://127.0.0.1:8000/docs` to try `POST /predict`. The request `trip_id`
+must name a trip folder in the local `train` or `student_test` partition. The
+response includes classifier-only and Viterbi predictions; accuracy metrics
+are populated only for trips with a ground-truth `.route` file.

@@ -141,7 +141,7 @@ def clean_gps_track(track, gap_threshold=3.0):
     return cleaned, dt, is_time_gap
 
 
-def extract_trip_features(trip_dir, search_radius=60.0, max_cands_per_pt=15):
+def extract_trip_features(trip_dir, search_radius=60.0, max_cands_per_pt=15, include_true_arc=True):
     """
     Extracts candidate road segments and rotation/scale-invariant features
     for every GPS observation in a trip after cleaning and metric projection.
@@ -173,7 +173,7 @@ def extract_trip_features(trip_dir, search_radius=60.0, max_cands_per_pt=15):
     arc_len = np.linalg.norm(arc_vec, axis=1)
     
     # 2. Ground truth matching if route exists
-    true_arcs = match_track_to_route(track_m, u_m, v_m, route) if route is not None else None
+    true_arcs = match_track_to_route(track_m, u_m, v_m, route) if route else None
     
     # 3. Fast multi-point segment indexing for high recall
     pts_list = []
@@ -223,8 +223,8 @@ def extract_trip_features(trip_dir, search_radius=60.0, max_cands_per_pt=15):
                 is_hit = True
             else:
                 miss_count += 1
-                # To train effectively without degenerate sample, add true arc if missed
-                cands.append(t_arc)
+                if include_true_arc:
+                    cands.append(t_arc)
                 
         # Compute exact orthogonal distance and features for all candidates
         cand_arr = np.array(cands, dtype=np.int32)
@@ -255,7 +255,7 @@ def extract_trip_features(trip_dir, search_radius=60.0, max_cands_per_pt=15):
         if len(sort_order) > max_cands_per_pt:
             # Keep top candidates + true arc if present
             keep_indices = list(sort_order[:max_cands_per_pt])
-            if true_arcs is not None:
+            if include_true_arc and true_arcs is not None:
                 t_pos = np.where(cand_arr == true_arcs[i])[0]
                 if len(t_pos) > 0 and t_pos[0] not in keep_indices:
                     keep_indices[-1] = t_pos[0]
