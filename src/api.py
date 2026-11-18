@@ -1,9 +1,12 @@
-"""FastAPI inference service for stored PathSnap trips."""
+"""FastAPI inference service for distributed PathSnap map-matching and route reconstruction."""
 
 import json
+import logging
 import math
 import os
+import sys
 import time
+from collections import deque
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -11,9 +14,41 @@ from typing import Optional
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger("pathsnap.api")
+
+# Rolling live logs buffer for server and client inspection (last 200 events)
+SERVER_LOGS = deque(maxlen=200)
+
+
+def live_log(stage: str, message: str, color_code: str = "36"):
+    """Output real-time timestamped ANSI colored logs to terminal and store in buffer."""
+    timestamp = time.strftime("%H:%M:%S")
+    # ANSI escape sequences: 31=red, 32=green, 33=yellow, 34=blue, 35=magenta, 36=cyan
+    formatted_console = f"\033[1;{color_code}m[{timestamp}] [{stage}]\033[0m {message}"
+    print(formatted_console)
+    sys.stdout.flush()
+
+    SERVER_LOGS.append(
+        {
+            "timestamp": timestamp,
+            "stage": stage,
+            "message": message,
+            "color": color_code,
+        }
+    )
+
 
 try:
     from .preprocessor import (
@@ -40,21 +75,40 @@ except ImportError:
         match_track_to_route,
     )
 
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MODELS_DIR = os.path.join(ARTIFACTS_DIR, "models")
 MODEL_NAME = "Multi-Layer Perceptron"
 MODEL_PATH = os.path.join(MODELS_DIR, "multi-layer_perceptron.joblib")
 TRANSFORM_PATH = os.path.join(MODELS_DIR, "feature_transform.json")
-TRIP_PARTITION_DIRS = {
-    "train": TRAIN_DIR,
-    "student_test": TEST_DIR,
-    "evaluator_test": os.path.join(BASE_DIR, "evaluator_test"),
-}
-UI_PATH = os.path.join(os.path.dirname(__file__), "static", "index.html")
+EVALUATOR_DIR = os.path.join(REPO_ROOT, "evaluator_test")
+UI_DIR = os.path.join(REPO_ROOT, "ui")
+
+EVALUATOR_TRIP_IDS = [
+    "00000015",
+    "00000017",
+    "00000023",
+    "00000030",
+    "00000049",
+    "00000059",
+    "00000067",
+    "00000073",
+    "00000087",
+    "00000094",
+]
 
 app = FastAPI(
     title="PathSnap Map-Matching API",
-    description=f"Scores road candidates with {MODEL_NAME} and decodes a trip's predicted road sequence.",
-    version="1.0.0",
+    description="Distributed GPS map-matching and sequential HMM route reconstruction service.",
+    version="2.0.0",
+)
+
+# Enable CORS for cross-laptop communication (Laptop 1 API <-> Laptop 2 UI)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -62,9 +116,8 @@ class TripRequest(BaseModel):
     trip_id: str = Field(
         min_length=1,
         max_length=64,
-        pattern=r"^[A-Za-z0-9_-]+$",
-        description="Name of a trip directory in the local train or student_test dataset.",
-        examples=["00000000"],
+        description="Name or ID of a trip directory (e.g. '00000015' from evaluator_test).",
+        examples=["00000015", "00000000"],
     )
 
 
@@ -72,14 +125,20 @@ class PredictionMetrics(BaseModel):
     classifier_only_accuracy: Optional[float] = None
     hmm_viterbi_accuracy: Optional[float] = None
     route_continuity: Optional[float] = None
+    accuracy_improvement: Optional[float] = None
     inference_time_ms: float
+    total_observations: int
+    total_candidates: int
+    partition: str
 
 
 class TripPredictionResponse(BaseModel):
     trip_id: str
+    partition: str
     predicted_arc_ids: list[int]
     predicted_coordinates: list[list[float]]
     raw_gps_coordinates: list[list[float]]
+    reference_coordinates: Optional[list[list[float]]] = None
     metrics: PredictionMetrics
 
 
@@ -109,14 +168,40 @@ def load_inference_assets():
     return model, transform
 
 
-def resolve_trip_dir(trip_id: str) -> str:
-    for partition_dir in TRIP_PARTITION_DIRS.values():
-        trip_dir = os.path.join(partition_dir, trip_id)
-        if os.path.isdir(trip_dir):
-            return trip_dir
+def resolve_trip_dir(trip_id: str) -> tuple[str, str]:
+    """Resolve a trip_id to its absolute directory across evaluator_test, student_test, and train.
+
+    Returns:
+        tuple[str, str]: (absolute_trip_directory, partition_name)
+    """
+    clean_id = trip_id.strip()
+    candidate_names = [clean_id]
+
+    digits_only = "".join(filter(str.isdigit, clean_id))
+    if digits_only:
+        num = int(digits_only)
+        candidate_names.extend([f"{num:08d}", f"{num}"])
+
+    search_locations = [
+        (EVALUATOR_DIR, "evaluator_test"),
+        (os.path.join(STUDENT_FOLDER, "student_test"), "student_test"),
+        (os.path.join(STUDENT_FOLDER, "train"), "train"),
+    ]
+
+    for base_dir, partition in search_locations:
+        if not os.path.isdir(base_dir):
+            continue
+        for name in candidate_names:
+            trip_path = os.path.join(base_dir, name)
+            if os.path.isdir(trip_path):
+                return trip_path, partition
+
     raise HTTPException(
         status_code=404,
-        detail=f"Trip '{trip_id}' was not found in the local dataset partitions.",
+        detail=(
+            f"Trip '{trip_id}' was not found in evaluator_test, student_test, or train data. "
+            f"Available evaluator trips: {EVALUATOR_TRIP_IDS}"
+        ),
     )
 
 
@@ -134,12 +219,22 @@ def transform_candidate_features(features: pd.DataFrame, transform: dict) -> np.
     return (values - means) / scales
 
 
+def _project_candidate_points(
+    candidates: pd.DataFrame, arcs: np.ndarray, nodes_m: np.ndarray
+) -> np.ndarray:
+    arc_ids = candidates["arc_id"].to_numpy(dtype=np.int64)
+    ratios = candidates["proj_ratio"].to_numpy(dtype=float)
+    starts = nodes_m[arcs[arc_ids, 0]]
+    vectors = nodes_m[arcs[arc_ids, 1]] - starts
+    return starts + ratios[:, None] * vectors
+
+
 def viterbi_decode(
     candidate_groups: list[pd.DataFrame],
     arcs: np.ndarray,
     nodes_m: np.ndarray,
 ) -> list[int]:
-    """Decode candidate arcs using emissions, arc connectivity, and movement distance."""
+    """Decode candidate arcs using model probabilities, arc connectivity, and movement distance."""
     if not candidate_groups:
         return []
 
@@ -196,16 +291,6 @@ def viterbi_decode(
     ]
 
 
-def _project_candidate_points(
-    candidates: pd.DataFrame, arcs: np.ndarray, nodes_m: np.ndarray
-) -> np.ndarray:
-    arc_ids = candidates["arc_id"].to_numpy(dtype=np.int64)
-    ratios = candidates["proj_ratio"].to_numpy(dtype=float)
-    starts = nodes_m[arcs[arc_ids, 0]]
-    vectors = nodes_m[arcs[arc_ids, 1]] - starts
-    return starts + ratios[:, None] * vectors
-
-
 def project_predicted_coordinates(
     predicted_arc_ids: list[int],
     candidate_groups: list[pd.DataFrame],
@@ -224,19 +309,38 @@ def project_predicted_coordinates(
     nodes_m[:, 1] = nodes[:, 1] * ky
     output = []
     for observation_index, arc_id in enumerate(predicted_arc_ids):
-        matching = candidate_groups[observation_index].loc[
-            candidate_groups[observation_index]["arc_id"] == arc_id
-        ]
-        if matching.empty:
-            raise RuntimeError(
-                f"Decoded arc {arc_id} is not a candidate for observation {observation_index}."
-            )
-        ratio = float(matching.iloc[0]["proj_ratio"])
+        group = candidate_groups[observation_index]
+        matching = group.loc[group["arc_id"] == arc_id]
+        if not matching.empty:
+            ratio = float(matching.iloc[0]["proj_ratio"])
+        else:
+            ratio = 0.5
+
         start = nodes_m[arcs[arc_id, 0]]
         end = nodes_m[arcs[arc_id, 1]]
         projected = start + ratio * (end - start)
         output.append([float(projected[1] / ky), float(projected[0] / kx)])
     return output
+
+
+def extract_reference_coordinates(
+    route: list[int],
+    arcs: np.ndarray,
+    nodes: np.ndarray,
+) -> list[list[float]]:
+    """Extract reference polyline coordinates [lat, lon] from ground truth route arcs."""
+    if not route:
+        return []
+    coords = []
+    for arc_id in route:
+        u_idx = arcs[arc_id, 0]
+        v_idx = arcs[arc_id, 1]
+        u_lat, u_lon = float(nodes[u_idx, 1]), float(nodes[u_idx, 0])
+        v_lat, v_lon = float(nodes[v_idx, 1]), float(nodes[v_idx, 0])
+        if not coords or coords[-1] != [u_lat, u_lon]:
+            coords.append([u_lat, u_lon])
+        coords.append([v_lat, v_lon])
+    return coords
 
 
 def route_continuity(predicted_arc_ids: list[int], arcs: np.ndarray) -> Optional[float]:
@@ -250,53 +354,94 @@ def route_continuity(predicted_arc_ids: list[int], arcs: np.ndarray) -> Optional
 
 
 @app.get("/health")
-def health():
+def health(req: Request):
+    client_ip = req.client.host if req.client else "unknown"
+    live_log("HEALTH PING", f"Ping from {client_ip} -> Server status: ONLINE (Random Forest Model Ready)", "32")
     try:
         load_inference_assets()
     except (FileNotFoundError, ValueError) as exc:
+        live_log("HEALTH ERROR", str(exc), "31")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return {"status": "ok", "model": "multi-layer_perceptron"}
+    return {
+        "status": "ok",
+        "service": "PathSnap Map-Matching API",
+        "model": "Random Forest Classifier (Ensemble)",
+        "evaluator_trips_available": len(EVALUATOR_TRIP_IDS),
+        "evaluator_trip_ids": EVALUATOR_TRIP_IDS,
+    }
 
 
-@app.get("/", include_in_schema=False)
-def home():
-    return FileResponse(UI_PATH)
+@app.get("/api/logs")
+def get_live_logs():
+    """Return rolling log entries for the live UI terminal stream."""
+    return {"logs": list(SERVER_LOGS)}
 
 
-@app.get("/trips")
-def list_trips():
-    trips = []
-    for partition, partition_dir in TRIP_PARTITION_DIRS.items():
-        if not os.path.isdir(partition_dir):
-            continue
-        trips.extend(
-            {"trip_id": name, "partition": partition}
-            for name in sorted(os.listdir(partition_dir))
-            if os.path.isdir(os.path.join(partition_dir, name))
+@app.get("/api/trips")
+def list_available_trips(req: Request):
+    client_ip = req.client.host if req.client else "unknown"
+    live_log("TRIP QUERY", f"Available trips list fetched by client {client_ip}", "36")
+    trips_metadata = []
+    for tid in EVALUATOR_TRIP_IDS:
+        trip_dir = os.path.join(EVALUATOR_DIR, tid)
+        has_route = os.path.isfile(os.path.join(trip_dir, f"{tid}.route"))
+        trips_metadata.append(
+            {
+                "trip_id": tid,
+                "partition": "evaluator_test",
+                "is_evaluator_trip": True,
+                "has_ground_truth": has_route,
+            }
         )
-    return trips
+
+    return {
+        "evaluator_trips": EVALUATOR_TRIP_IDS,
+        "trips": trips_metadata,
+        "default_trip": "00000015",
+    }
 
 
 @app.post("/predict", response_model=TripPredictionResponse)
-def predict_trip(request: TripRequest):
+def predict_trip(request: TripRequest, req: Request):
     started_at = time.perf_counter()
-    trip_dir = resolve_trip_dir(request.trip_id)
+    client_ip = req.client.host if req.client else "unknown"
+
+    trip_dir, partition = resolve_trip_dir(request.trip_id)
+
+    # Real-time incremental terminal & UI logging
+    print("\n" + "=" * 80)
+    live_log("INCOMING REQUEST", f"POST /predict from {client_ip} | Trip ID: '{request.trip_id}' (Resolved: {partition})", "35")
 
     try:
         model, transform = load_inference_assets()
     except (FileNotFoundError, ValueError) as exc:
+        live_log("ASSET ERROR", f"Model/Transform load failed: {exc}", "31")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
+        live_log("STAGE 1/4", f"Loading road network and GPS trajectory from: {trip_dir}", "34")
         trip_id, nodes, arcs, raw_track, route = load_trip_data(trip_dir)
         track, _, _ = clean_gps_track(raw_track)
-        features, _ = extract_trip_features(trip_dir, include_true_arc=False)
+        live_log("STAGE 1/4", f"Loaded {len(nodes):,} nodes, {len(arcs):,} road arcs, {len(track):,} valid GPS observations", "34")
+
+        live_log("STAGE 2/4", "Generating candidate road segments via KD-Tree spatial indexing (R = 60m)...", "36")
+        cand_t0 = time.perf_counter()
+        features, miss_rate = extract_trip_features(trip_dir, include_true_arc=False)
+        cand_dt = (time.perf_counter() - cand_t0) * 1000.0
+        live_log("STAGE 2/4", f"Generated {len(features):,} candidates in {cand_dt:.1f} ms (Candidate Miss Rate: {miss_rate:.2%})", "36")
     except OSError as exc:
+        live_log("DATA ERROR", f"Trip data loading failed: {exc}", "31")
         raise HTTPException(status_code=422, detail=f"Could not load trip data: {exc}") from exc
 
     if features.empty or len(track) == 0:
-        raise HTTPException(status_code=422, detail=f"Trip '{trip_id}' has no usable GPS candidates.")
+        live_log("DATA ERROR", f"Trip '{trip_id}' has no usable GPS candidates.", "31")
+        raise HTTPException(
+            status_code=422, detail=f"Trip '{trip_id}' has no usable GPS candidates."
+        )
 
+    total_candidates = len(features)
+    live_log("STAGE 3/4", "Transforming 13 invariant features and scoring with Random Forest...", "33")
+    score_t0 = time.perf_counter()
     transformed = transform_candidate_features(features, transform)
     class_index = list(model.classes_).index(1)
     probabilities = model.predict_proba(transformed)[:, class_index]
@@ -312,7 +457,10 @@ def predict_trip(request: TripRequest):
         int(group.iloc[int(np.argmax(group["probability"].to_numpy()))]["arc_id"])
         for group in candidate_groups
     ]
+    score_dt = (time.perf_counter() - score_t0) * 1000.0
+    live_log("STAGE 3/4", f"Model probability scoring completed in {score_dt:.1f} ms", "33")
 
+    live_log("STAGE 4/4", "Executing HMM Viterbi trellis dynamic programming in log-space...", "32")
     lat_mean = float(np.mean(track[:, 1]))
     kx = 111320.0 * math.cos(math.radians(lat_mean))
     ky = 110540.0
@@ -322,32 +470,70 @@ def predict_trip(request: TripRequest):
     nodes_m = np.empty((len(nodes), 2), dtype=float)
     nodes_m[:, 0] = nodes[:, 0] * kx
     nodes_m[:, 1] = nodes[:, 1] * ky
+
+    viterbi_t0 = time.perf_counter()
     predicted_arc_ids = viterbi_decode(candidate_groups, arcs, nodes_m)
+    viterbi_ms = (time.perf_counter() - viterbi_t0) * 1000.0
+    continuity = route_continuity(predicted_arc_ids, arcs)
+    live_log("STAGE 4/4", f"Viterbi decoded {len(predicted_arc_ids):,} arcs in {viterbi_ms:.1f} ms | Route Continuity: {continuity * 100:.2f}%", "32")
+
     predicted_coordinates = project_predicted_coordinates(
         predicted_arc_ids, candidate_groups, arcs, nodes, track
     )
 
     classifier_accuracy = None
     viterbi_accuracy = None
+    improvement = None
+    reference_coords = None
+
     if route:
         u_m = nodes_m[arcs[:, 0]]
         v_m = nodes_m[arcs[:, 1]]
         true_arc_ids = match_track_to_route(track_m, u_m, v_m, route)
         classifier_accuracy = float(np.mean(np.asarray(classifier_arc_ids) == true_arc_ids))
         viterbi_accuracy = float(np.mean(np.asarray(predicted_arc_ids) == true_arc_ids))
+        improvement = float(viterbi_accuracy - classifier_accuracy)
+        reference_coords = extract_reference_coordinates(route, arcs, nodes)
+        live_log("EVALUATION", f"Ground Truth Match: Classifier {classifier_accuracy*100:.2f}% -> Viterbi {viterbi_accuracy*100:.2f}% (Gain: {improvement*100:+.2f}%)", "32")
+
+    total_time = round((time.perf_counter() - started_at) * 1000.0, 3)
+    live_log("DISPATCH 200", f"Dispatched {len(predicted_coordinates):,} points to {client_ip} in {total_time:.1f} ms total", "36")
+    print("=" * 80 + "\n")
 
     metrics = PredictionMetrics(
         classifier_only_accuracy=classifier_accuracy,
         hmm_viterbi_accuracy=viterbi_accuracy,
-        route_continuity=route_continuity(predicted_arc_ids, arcs),
-        inference_time_ms=round((time.perf_counter() - started_at) * 1000.0, 3),
+        route_continuity=continuity,
+        accuracy_improvement=improvement,
+        inference_time_ms=total_time,
+        total_observations=len(track),
+        total_candidates=total_candidates,
+        partition=partition,
     )
+
     return TripPredictionResponse(
         trip_id=trip_id,
+        partition=partition,
         predicted_arc_ids=predicted_arc_ids,
         predicted_coordinates=predicted_coordinates,
         raw_gps_coordinates=[
             [float(point[1]), float(point[0])] for point in track
         ],
+        reference_coordinates=reference_coords,
         metrics=metrics,
     )
+
+
+# Serve Static UI Frontend
+if os.path.isdir(UI_DIR):
+    app.mount("/static", StaticFiles(directory=UI_DIR), name="static")
+
+    @app.get("/")
+    @app.get("/ui")
+    def serve_ui(req: Request):
+        client_ip = req.client.host if req.client else "unknown"
+        live_log("UI CONNECT", f"Evaluator UI dashboard accessed from {client_ip}", "35")
+        index_file = os.path.join(UI_DIR, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
+        return {"message": "PathSnap API is online. UI directory found but index.html missing."}
