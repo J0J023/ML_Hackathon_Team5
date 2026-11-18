@@ -6,6 +6,7 @@ PES University - UE24CS352A Machine Learning Hackathon
 
 import os
 import glob
+import json
 import math
 import time
 import numpy as np
@@ -13,10 +14,29 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STUDENT_FOLDER = os.path.join(BASE_DIR, "Student folder")
+_student_folder = os.path.join(BASE_DIR, "Student folder")
+_nested_student_folder = os.path.join(_student_folder, "Student folder")
+STUDENT_FOLDER = _nested_student_folder if os.path.isdir(_nested_student_folder) else _student_folder
 TRAIN_DIR = os.path.join(STUDENT_FOLDER, "train")
 TEST_DIR = os.path.join(STUDENT_FOLDER, "student_test")
 ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")
+MODELS_DIR = os.path.join(ARTIFACTS_DIR, "models")
+
+FEATURE_COLS = [
+    "dist_orthogonal",
+    "proj_ratio",
+    "dist_to_start",
+    "dist_to_end",
+    "distance_rank",
+    "road_crowding_25_50m",
+    "arc_length",
+    "distance_travelled",
+    "heading_diff",
+    "heading_cos",
+    "speed",
+    "time_gap",
+    "is_time_gap"
+]
 
 
 def load_trip_data(trip_dir):
@@ -170,7 +190,8 @@ def extract_trip_features(trip_dir, search_radius=60.0, max_cands_per_pt=15):
     # 4. Trajectory kinematics (speed, time_gap, heading)
     d_pos = np.zeros((n_pts, 2))
     d_pos[1:] = np.diff(track_m, axis=0)
-    speed = np.linalg.norm(d_pos, axis=1) / dt
+    distance_travelled = np.linalg.norm(d_pos, axis=1)
+    speed = distance_travelled / dt
     
     # Trajectory heading in radians [-pi, pi]
     traj_heading = np.arctan2(d_pos[:, 1], d_pos[:, 0])
@@ -239,10 +260,25 @@ def extract_trip_features(trip_dir, search_radius=60.0, max_cands_per_pt=15):
                 if len(t_pos) > 0 and t_pos[0] not in keep_indices:
                     keep_indices[-1] = t_pos[0]
             sort_order = np.array(keep_indices)
+
+        # Rank and crowding are calculated only over the final candidate set for this GPS point.
+        selected_dist = dist_ortho[sort_order]
+        selected_dist_rank = np.empty(len(sort_order), dtype=np.int32)
+        selected_dist_rank[np.argsort(selected_dist, kind="stable")] = np.arange(1, len(sort_order) + 1)
+
+        road_crowding = np.array([
+            np.count_nonzero(
+                    (selected_dist >= 25.0) &
+                    (selected_dist <= 50.0) &
+                    (np.arange(len(selected_dist)) != crowd_idx)
+            )
+            for crowd_idx in range(len(selected_dist))
+        ], dtype=np.int32)
             
         for idx in sort_order:
             a_id = cand_arr[idx]
             label = 1 if (true_arcs is not None and a_id == true_arcs[i]) else 0
+            selected_pos = int(np.where(sort_order == idx)[0][0])
             
             rows.append({
                 "trip_id": tid,
@@ -252,7 +288,10 @@ def extract_trip_features(trip_dir, search_radius=60.0, max_cands_per_pt=15):
                 "proj_ratio": float(t_proj[idx]),
                 "dist_to_start": float(dist_start[idx]),
                 "dist_to_end": float(dist_end[idx]),
+                "distance_rank": int(selected_dist_rank[selected_pos]),
+                "road_crowding_25_50m": int(road_crowding[selected_pos]),
                 "arc_length": float(len_cand[idx]),
+                "distance_travelled": float(distance_travelled[i]),
                 "heading_diff": float(theta_diff[idx]),
                 "heading_cos": float(cos_theta[idx]),
                 "speed": float(speed[i]),
@@ -310,7 +349,34 @@ def build_preprocessed_dataset(max_train_trips=80, max_test_trips=10):
     print(f"[+] Test feature matrix built: {test_data.shape[0]:,} candidate rows")
     print(f"[+] Average Test Candidate Miss Rate: {avg_test_miss:.2f}% (Recall: {100 - avg_test_miss:.2f}%)")
     
-    # Save feature matrices
+    # Impute and scale using training data only, then export shared final matrices.
+    train_features = train_data[FEATURE_COLS].replace([np.inf, -np.inf], np.nan)
+    test_features = test_data[FEATURE_COLS].replace([np.inf, -np.inf], np.nan)
+    medians = train_features.median().fillna(0.0)
+    train_imputed = train_features.fillna(medians).to_numpy(dtype=float)
+    test_imputed = test_features.fillna(medians).to_numpy(dtype=float)
+    means = train_imputed.mean(axis=0)
+    scales = train_imputed.std(axis=0)
+    scales[scales == 0.0] = 1.0
+    train_data[FEATURE_COLS] = pd.DataFrame(
+        (train_imputed - means) / scales, columns=FEATURE_COLS, index=train_data.index
+    )
+    test_data[FEATURE_COLS] = pd.DataFrame(
+        (test_imputed - means) / scales, columns=FEATURE_COLS, index=test_data.index
+    )
+
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    transform_path = os.path.join(MODELS_DIR, "feature_transform.json")
+    with open(transform_path, "w") as f:
+        json.dump({
+            "feature_columns": FEATURE_COLS,
+            "imputation_medians": medians.to_dict(),
+            "scaler_mean": dict(zip(FEATURE_COLS, means.tolist())),
+            "scaler_scale": dict(zip(FEATURE_COLS, scales.tolist()))
+        }, f, indent=2)
+    print(f"[+] Saved training-fitted imputation/scaling parameters: {transform_path}")
+
+    # Save the imputed, scaled feature matrices shared by all model runs.
     try:
         train_out = os.path.join(ARTIFACTS_DIR, "train_features.parquet")
         test_out = os.path.join(ARTIFACTS_DIR, "test_features.parquet")

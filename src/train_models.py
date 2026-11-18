@@ -1,9 +1,3 @@
-"""
-PathSnap: 5-Model Training, Cross-Validation, and Benchmarking Pipeline
-Author: Team PathSnap
-PES University - UE24CS352A Machine Learning Hackathon
-"""
-
 import os
 import glob
 import time
@@ -15,7 +9,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from sklearn.base import clone
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupKFold
 from sklearn.metrics import f1_score, accuracy_score, log_loss, confusion_matrix
 
@@ -29,13 +22,20 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")
 MODELS_DIR = os.path.join(ARTIFACTS_DIR, "models")
 PLOTS_DIR = os.path.join(ARTIFACTS_DIR, "plots")
+STUDENT_FOLDER = os.path.join(BASE_DIR, "Student folder")
+_nested_student_folder = os.path.join(STUDENT_FOLDER, "Student folder")
+if os.path.isdir(_nested_student_folder):
+    STUDENT_FOLDER = _nested_student_folder
 
 FEATURE_COLS = [
     "dist_orthogonal",
     "proj_ratio",
     "dist_to_start",
     "dist_to_end",
+    "distance_rank",
+    "road_crowding_25_50m",
     "arc_length",
+    "distance_travelled",
     "heading_diff",
     "heading_cos",
     "speed",
@@ -118,7 +118,7 @@ def load_all_trip_arcs():
     """Loads arc endpoint mappings for all trips for continuity evaluation."""
     arcs_dict = {}
     for partition in ["train", "student_test"]:
-        pdir = os.path.join(BASE_DIR, "Student folder", partition)
+        pdir = os.path.join(STUDENT_FOLDER, partition)
         for tdir in glob.glob(os.path.join(pdir, "*")):
             tid = os.path.basename(tdir)
             apath = os.path.join(tdir, f"{tid}.arcs")
@@ -134,26 +134,22 @@ def get_model_definitions():
         "Logistic Regression": {
             "family": "Linear and Probabilistic",
             "key_config": "C=1.0, solver='lbfgs', max_iter=500",
-            "model": LogisticRegression(C=1.0, solver="lbfgs", max_iter=500, random_state=42),
-            "scale_features": True
+            "model": LogisticRegression(C=1.0, solver="lbfgs", max_iter=500, random_state=42)
         },
         "K-Nearest Neighbors": {
             "family": "Instance-based",
             "key_config": "n_neighbors=7, weights='distance'",
-            "model": KNeighborsClassifier(n_neighbors=7, weights="distance", n_jobs=-1),
-            "scale_features": True
+            "model": KNeighborsClassifier(n_neighbors=7, weights="distance", n_jobs=-1)
         },
         "Decision Tree": {
             "family": "Tree-based",
             "key_config": "max_depth=12, min_samples_split=20",
-            "model": DecisionTreeClassifier(max_depth=12, min_samples_split=20, random_state=42),
-            "scale_features": False
+            "model": DecisionTreeClassifier(max_depth=12, min_samples_split=20, random_state=42)
         },
         "Random Forest": {
             "family": "Ensemble",
             "key_config": "n_estimators=100, max_depth=14",
-            "model": RandomForestClassifier(n_estimators=100, max_depth=14, n_jobs=-1, random_state=42),
-            "scale_features": False
+            "model": RandomForestClassifier(n_estimators=100, max_depth=14, n_jobs=-1, random_state=42)
         }
     }
     return models
@@ -179,18 +175,12 @@ def run_model_benchmark():
     else:
         train_df_sub = train_df
         
-    X_train_raw = train_df_sub[FEATURE_COLS].values
+    X_train = train_df_sub[FEATURE_COLS].values
     y_train = train_df_sub[TARGET_COL].values
     groups_train = train_df_sub["trip_id"].values
     
-    X_test_raw = test_df[FEATURE_COLS].values
+    X_test = test_df[FEATURE_COLS].values
     y_test = test_df[TARGET_COL].values
-    
-    # Feature scaler
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train_raw)
-    X_test_scaled = scaler.transform(X_test_raw)
-    joblib.dump(scaler, os.path.join(MODELS_DIR, "scaler.joblib"))
     
     arcs_dict = load_all_trip_arcs()
     models = get_model_definitions()
@@ -204,9 +194,8 @@ def run_model_benchmark():
     for name, info in models.items():
         print(f"\n---> Training Model: {name} ({info['family']})")
         model = info["model"]
-        use_scaled = info["scale_features"]
-        X_tr = X_train_scaled if use_scaled else X_train_raw
-        X_te = X_test_scaled if use_scaled else X_test_raw
+        X_tr = X_train
+        X_te = X_test
         
         # 1. Group-Aware Cross-Validation
         cv_f1_scores = []
@@ -296,7 +285,7 @@ def run_model_benchmark():
     
     # Generate Visualizations
     plot_model_comparisons(results_df)
-    plot_confusion_matrices(trained_models, models, X_test_raw, X_test_scaled, y_test)
+    plot_confusion_matrices(trained_models, X_test, y_test)
     
     return results_df
 
@@ -327,14 +316,12 @@ def plot_model_comparisons(results_df):
     print(f"[+] Comparison plot saved: {comp_plot}")
 
 
-def plot_confusion_matrices(trained_models, models_info, X_test_raw, X_test_scaled, y_test):
+def plot_confusion_matrices(trained_models, X_test, y_test):
     """Generates confusion matrices for every trained model."""
     fig, axes = plt.subplots(1, len(trained_models), figsize=(4 * len(trained_models), 3.5))
     
     for idx, (name, clf) in enumerate(trained_models.items()):
-        use_scaled = models_info[name]["scale_features"]
-        X_te = X_test_scaled if use_scaled else X_test_raw
-        preds = clf.predict(X_te)
+        preds = clf.predict(X_test)
         cm = confusion_matrix(y_test, preds)
         
         ax = axes[idx] if len(trained_models) > 1 else axes

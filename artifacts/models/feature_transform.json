@@ -1,0 +1,62 @@
+{
+  "feature_columns": [
+    "dist_orthogonal",
+    "proj_ratio",
+    "dist_to_start",
+    "dist_to_end",
+    "distance_rank",
+    "road_crowding_25_50m",
+    "arc_length",
+    "distance_travelled",
+    "heading_diff",
+    "heading_cos",
+    "speed",
+    "time_gap",
+    "is_time_gap"
+  ],
+  "imputation_medians": {
+    "dist_orthogonal": 24.37279105565556,
+    "proj_ratio": 0.5094804731597125,
+    "dist_to_start": 43.37615127975483,
+    "dist_to_end": 43.529994566230386,
+    "distance_rank": 5.0,
+    "road_crowding_25_50m": 3.0,
+    "arc_length": 40.078291879203036,
+    "distance_travelled": 11.114778392932394,
+    "heading_diff": 1.5222389475852658,
+    "heading_cos": 0.048538299873204745,
+    "speed": 10.833923829057875,
+    "time_gap": 1.0,
+    "is_time_gap": 0.0
+  },
+  "scaler_mean": {
+    "dist_orthogonal": 33.92621206495592,
+    "proj_ratio": 0.5031683577973893,
+    "dist_to_start": 75.03634735171546,
+    "dist_to_end": 74.94935260590336,
+    "distance_rank": 6.102920775137179,
+    "road_crowding_25_50m": 3.826934914477205,
+    "arc_length": 90.72485629725357,
+    "distance_travelled": 13.75084535601678,
+    "heading_diff": 1.544292667407917,
+    "heading_cos": 0.020051553363106375,
+    "speed": 13.13417664217537,
+    "time_gap": 2.7255493154271777,
+    "is_time_gap": 0.01033060698560571
+  },
+  "scaler_scale": {
+    "dist_orthogonal": 114.15484925777977,
+    "proj_ratio": 0.4434640208291444,
+    "dist_to_start": 161.81007984591744,
+    "dist_to_end": 161.07423219563262,
+    "distance_rank": 4.106056460363806,
+    "road_crowding_25_50m": 3.3942055306348116,
+    "arc_length": 189.16250945656887,
+    "distance_travelled": 11.093615917923513,
+    "heading_diff": 1.0317781588956232,
+    "heading_cos": 0.7758073613273332,
+    "speed": 9.464243664855431,
+    "time_gap": 459.8868013908223,
+    "is_time_gap": 0.10111323130488246
+  }
+}
