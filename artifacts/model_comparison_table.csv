@@ -1,0 +1,5 @@
+Model,Algorithm Family,Key Configuration,CV Macro F1-score,Top-1 Accuracy,Route continuity,Student-Test Macro F1-score,Log Loss,Inference Time,Train Time (s)
+Logistic Regression,Linear and Probabilistic,"C=1.0, solver='lbfgs', max_iter=500",0.5363,0.4049,0.0%,0.6344,0.296,0.000 ms/obs,0.73
+K-Nearest Neighbors,Instance-based,"n_neighbors=7, weights='distance'",0.803,0.691,0.0%,0.7986,0.7238,0.005 ms/obs,0.04
+Decision Tree,Tree-based,"max_depth=12, min_samples_split=20",0.8404,0.7094,0.0%,0.807,0.4633,0.000 ms/obs,13.08
+Random Forest,Ensemble,"n_estimators=100, max_depth=14",0.8441,0.7113,0.0%,0.8202,0.1649,0.001 ms/obs,54.99

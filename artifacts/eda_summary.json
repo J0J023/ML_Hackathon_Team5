@@ -1,0 +1,31 @@
+{
+  "train_trips": 80,
+  "test_trips": 10,
+  "total_trips": 90,
+  "train_total_gps_points": 208417,
+  "test_total_gps_points": 19160,
+  "gps_points_per_trip_train": {
+    "mean": 2605.2125,
+    "std": 3312.3453990910652,
+    "min": 361,
+    "median": 1529.0,
+    "max": 19313
+  },
+  "road_network_nodes_train": {
+    "mean": 24168.5625,
+    "min": 299,
+    "max": 155003
+  },
+  "road_network_arcs_train": {
+    "mean": 48461.3,
+    "min": 649,
+    "max": 307392
+  },
+  "route_arcs_train": {
+    "mean": 391.7,
+    "min": 59,
+    "max": 2266
+  },
+  "sampling_dt_percentage_1s": 96.50902144122263,
+  "missing_invalid_values": 0
+}
