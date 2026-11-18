@@ -1,6 +1,6 @@
 Model,Algorithm Family,Key Configuration,CV Macro F1-score,Top-1 Accuracy,Route continuity,Student-Test Macro F1-score,Log Loss,Inference Time,Train Time (s)
-Logistic Regression,Linear and Probabilistic,"C=1.0, solver='lbfgs', max_iter=500",0.7837,0.7239,0.0%,0.7954,0.2181,0.000 ms/obs,0.57
-K-Nearest Neighbors,Instance-based,"n_neighbors=7, weights='distance'",0.8436,0.7067,0.0%,0.8201,0.7749,0.033 ms/obs,0.04
-Decision Tree,Tree-based,"max_depth=12, min_samples_split=20",0.8534,0.7904,0.0%,0.8433,0.2366,0.000 ms/obs,15.06
-Random Forest,Ensemble,"n_estimators=100, max_depth=14",0.8551,0.7347,0.0%,0.849,0.1466,0.001 ms/obs,43.27
-Multi-Layer Perceptron,Neural Networks,"hidden_layer_sizes=(64, 32), max_iter=150, early_stopping=True",0.8529,0.8112,0.0%,0.8508,0.1466,0.000 ms/obs,88.45
+Logistic Regression,Linear and Probabilistic,"C=1.0, solver='lbfgs', max_iter=500",0.7842,0.7237,0.0%,0.7957,0.2174,0.000 ms/obs,1.9
+K-Nearest Neighbors,Instance-based,"n_neighbors=7, weights='distance'",0.8412,0.7055,0.0%,0.819,0.7468,0.175 ms/obs,0.16
+Decision Tree,Tree-based,"max_depth=12, min_samples_split=20",0.8506,0.7983,0.0%,0.8451,0.2316,0.000 ms/obs,20.98
+Random Forest,Ensemble,"n_estimators=100, max_depth=14",0.8547,0.7368,0.0%,0.8504,0.1461,0.002 ms/obs,93.23
+Multi-Layer Perceptron,Neural Networks,"hidden_layer_sizes=(64, 32), max_iter=150, early_stopping=True",0.8597,0.8136,0.0%,0.8504,0.1511,0.001 ms/obs,183.58

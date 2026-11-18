@@ -6,9 +6,9 @@ from pathlib import Path
 import pandas as pd
 
 try:
-    from .api import TripRequest, predict_trip
+    from .api import MODEL_NAME, TripRequest, predict_trip
 except ImportError:
-    from api import TripRequest, predict_trip
+    from api import MODEL_NAME, TripRequest, predict_trip
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EVALUATOR_DIR = PROJECT_ROOT / "evaluator_test"
@@ -30,6 +30,7 @@ def main():
         if metrics.classifier_only_accuracy is None or metrics.hmm_viterbi_accuracy is None:
             raise ValueError(f"Trip {trip_dir.name} has no route ground truth for evaluation.")
         row = {
+            "model": MODEL_NAME,
             "trip_id": response.trip_id,
             "observations": len(response.predicted_arc_ids),
             "classifier_only_accuracy": metrics.classifier_only_accuracy,
@@ -47,6 +48,7 @@ def main():
 
     results = pd.DataFrame(rows)
     summary = {
+        "model": MODEL_NAME,
         "trip_count": len(results),
         "mean_classifier_only_accuracy": float(results["classifier_only_accuracy"].mean()),
         "mean_hmm_viterbi_accuracy": float(results["hmm_viterbi_accuracy"].mean()),

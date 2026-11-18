@@ -25,7 +25,7 @@ GPS tracking systems inherently suffer from urban canyon multipath reflections, 
 [2. Invariant Feature Extraction] (Orthogonal distance, projection ratio, heading error, speed, kinematics)
            │
            ▼
-[3. Tree-Based ML Scoring Model] (Decision Tree Classifier)
+[3. Neural ML Scoring Model] (Multi-Layer Perceptron)
            │
            ▼ (Candidate emission probabilities)
 [4. HMM & Viterbi Decoder] (Road connectivity and movement-distance consistency)
@@ -52,6 +52,7 @@ ML_Hackathon/
 │   ├── models/                        # Serialized model weights & feature scalers
 │   │   ├── decision_tree.joblib
 │   │   ├── random_forest.joblib
+│   │   ├── multi-layer_perceptron.joblib
 │   │   └── scaler.joblib
 │   └── plots/                         # Diagnostic and EDA charts
 │       ├── trajectory_distributions.png
@@ -71,7 +72,8 @@ ML_Hackathon/
 ├── notebooks/
 │   ├── decision_tree_pipeline.ipynb   # Decision Tree training & evaluation walkthrough
 │   ├── logistic_regression_pipeline.ipynb # Logistic Regression training & evaluation
-│   └── gaussian_naive_bayes_pipeline.ipynb # Gaussian Naive Bayes training & evaluation
+│   ├── gaussian_naive_bayes_pipeline.ipynb # Gaussian Naive Bayes training & evaluation
+│   └── mlp_pipeline.ipynb             # MLP training & evaluation walkthrough
 ├── requirements.txt
 ├── README.md
 └── .gitignore
@@ -79,7 +81,7 @@ ML_Hackathon/
 
 ---
 
-## 4. Phase 1 Evaluation Results (Tree-Based Focus)
+## 4. Phase 1 Evaluation Results
 
 ### A. Candidate Generation & Recall
 * **Average Candidate Miss Rate**: $5.50\%$ (Candidate Recall: **$94.50\%$**).
@@ -89,15 +91,13 @@ ML_Hackathon/
 
 | Model | Algorithm Family | Key Configuration | CV Macro F1 | Student Top-1 Acc | Student Macro F1 | Log Loss | Inference Latency |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Decision Tree** | Tree-based | `max_depth=12, min_samples_split=20` | **0.8404** | **0.7094** | **0.8070** | 0.4633 | < 0.001 ms/obs |
-| **Random Forest** | Ensemble | `n_estimators=100, max_depth=14` | **0.8441** | **0.7113** | **0.8202** | 0.1649 | 0.001 ms/obs |
+| Decision Tree | Tree-based | `max_depth=12, min_samples_split=20` | 0.8506 | 0.7983 | 0.8451 | 0.2316 | < 0.001 ms/obs |
+| Random Forest | Ensemble | `n_estimators=100, max_depth=14` | 0.8547 | 0.7368 | 0.8504 | 0.1461 | 0.002 ms/obs |
+| **Multi-Layer Perceptron (selected)** | Neural Network | `hidden_layer_sizes=(64, 32), early_stopping=True` | **0.8597** | **0.8136** | **0.8504** | 0.1511 | 0.001 ms/obs |
 
-### C. Feature Importance Analysis
-From Random Forest and Decision Tree feature attributions:
-1. `dist_orthogonal` ($33.9\%$): Perpendicular distance from ping to candidate segment line.
-2. `proj_ratio` ($22.7\%$): Projection parameter along segment $[0, 1]$.
-3. `heading_cos` & `heading_diff` ($19.0\%$ combined): Alignment between trajectory movement vector and road direction.
-4. `arc_length` ($9.2\%$): Physical length of the segment.
+### C. Selected Model
+The MLP has the strongest observation-level top-1 accuracy in the current
+benchmark (**81.36%**) and is the classifier served by the API.
 
 ---
 
@@ -134,8 +134,8 @@ The preprocessor exports `artifacts/train_features.parquet` and
 imputation and scaling are fitted on the training trips only; all models consume
 the same exported feature columns. The fitted medians and scaling parameters are
 saved in `artifacts/models/feature_transform.json`.
-The benchmark trains Logistic Regression, Gaussian Naive Bayes, K-Nearest
-Neighbors, Decision Tree, and Random Forest models.
+The benchmark compares Logistic Regression, K-Nearest Neighbors, Decision Tree,
+Random Forest, and Multi-Layer Perceptron models.
 
 ### Run the map-matching API
 

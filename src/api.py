@@ -41,7 +41,8 @@ except ImportError:
     )
 
 MODELS_DIR = os.path.join(ARTIFACTS_DIR, "models")
-MODEL_PATH = os.path.join(MODELS_DIR, "random_forest.joblib")
+MODEL_NAME = "Multi-Layer Perceptron"
+MODEL_PATH = os.path.join(MODELS_DIR, "multi-layer_perceptron.joblib")
 TRANSFORM_PATH = os.path.join(MODELS_DIR, "feature_transform.json")
 TRIP_PARTITION_DIRS = {
     "train": TRAIN_DIR,
@@ -52,7 +53,7 @@ UI_PATH = os.path.join(os.path.dirname(__file__), "static", "index.html")
 
 app = FastAPI(
     title="PathSnap Map-Matching API",
-    description="Scores road candidates and decodes a trip's predicted road sequence.",
+    description=f"Scores road candidates with {MODEL_NAME} and decodes a trip's predicted road sequence.",
     version="1.0.0",
 )
 
@@ -86,7 +87,7 @@ class TripPredictionResponse(BaseModel):
 def load_inference_assets():
     if not os.path.isfile(MODEL_PATH):
         raise FileNotFoundError(
-            f"Trained Random Forest not found at {MODEL_PATH}. Run src/train_models.py first."
+            f"Trained {MODEL_NAME} not found at {MODEL_PATH}. Run src/train_models.py first."
         )
     if not os.path.isfile(TRANSFORM_PATH):
         raise FileNotFoundError(
@@ -102,7 +103,7 @@ def load_inference_assets():
         raise ValueError("Saved API classifier must support predict_proba and class 1.")
     if getattr(model, "n_features_in_", None) != len(FEATURE_COLS):
         raise ValueError(
-            "Saved Random Forest was trained with a different feature schema. "
+            f"Saved {MODEL_NAME} was trained with a different feature schema. "
             "Run src/train_models.py to retrain it."
         )
     return model, transform
@@ -254,7 +255,7 @@ def health():
         load_inference_assets()
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return {"status": "ok", "model": "random_forest"}
+    return {"status": "ok", "model": "multi-layer_perceptron"}
 
 
 @app.get("/", include_in_schema=False)
