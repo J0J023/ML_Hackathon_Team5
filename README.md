@@ -231,8 +231,14 @@ Bayesian optimization was executed across 25 trials using Optuna's Tree-structur
 All Folium and Leaflet maps in the repository strictly utilize **OpenStreetMap standard tiles** (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`).
 * This eliminates CartoDB API deprecation 403 Forbidden / "Access Blocked" errors.
 * Interactive HTML maps can be opened directly in any browser:
-  * `artifacts/maps/hmm_reconstructed_route_trip_00000000.html`
-  * `artifacts/maps/eda_map_trip_00000001.html`
+  * `artifacts/maps/hmm_reconstructed_route_trip_00000000.html` (Test trip 00000000 HMM decoded route vs. ground truth)
+  * `artifacts/maps/eda_map_trip_00000001.html` (Train trip 00000001 trajectory and road network)
+* To regenerate the interactive maps and report exports at any time:
+  ```bash
+  python src/eda.py                  # Generates artifacts/maps/eda_map_trip_00000001.html
+  python src/hmm_decoder.py          # Generates artifacts/maps/hmm_reconstructed_route_trip_00000000.html
+  python src/generate_report_plots.py # Generates artifacts/plots/folium_map_static_preview.png
+  ```
 
 ---
 

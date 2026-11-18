@@ -160,11 +160,48 @@ PathSnap matches noisy GPS coordinates to a road network and reconstructs contin
 
 Interactive Folium maps (`artifacts/maps/eda_map_trip_00000001.html` and `artifacts/maps/hmm_reconstructed_route_trip_00000000.html`) display raw GPS observations, road network geometry, ground-truth reference route, and HMM/Viterbi predicted route with legends and layer controls.
 
+### 6.1 Map Layers and Visual Specification
+As mandated by Section 6 of the Hackathon Deliverables, the geographical maps visualize four distinct layers with distinguishable styling:
+1. **Original GPS Observations (`.track`):** Blue circular markers (`#2b83ba`) with 1-second ping timestamps.
+2. **Road-Network Geometry (`.arcs`, `.nodes`):** Light gray line segments (`#999999`) showing candidate metric graph topology.
+3. **Reference Ground-Truth Route (`.route`):** Solid green polyline (`#1a9641`, width 2.6–3.0px) marking the true sequence of road arcs.
+4. **HMM/Viterbi Predicted Route:** Dashed red polyline (`#d7191c`, width 1.8–2.5px) decoded via log-space dynamic programming.
+5. **Interactive Controls:** All maps embed `folium.LayerControl(collapsed=False)` allowing evaluators to dynamically toggle layers on/off and inspect transitions at intersections. Maps strictly utilize OpenStreetMap tiles (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`).
+
+### 6.2 Representative Geographical Map Export
+The figure below presents static exported views for **Train Trip 00000001** (raw GPS vs. road network and ground-truth reference) and **Student-Test Trip 00000000** (raw GPS vs. ground truth vs. reconstructed predicted route achieving 92.1% Top-1 accuracy):
+
 ![Folium Geographical Map Views](../artifacts/plots/folium_map_static_preview.png)
+
+### 6.3 Committed HTML Maps & Generation Code
+- **Interactive HTML Maps (Committed to GitHub):**
+  - `artifacts/maps/eda_map_trip_00000001.html` (Train partition reference map)
+  - `artifacts/maps/hmm_reconstructed_route_trip_00000000.html` (Test partition HMM reconstruction map)
+- **Map Generation Source Code:**
+  - `src/eda.py` (`generate_sample_folium_map`): Generates EDA trajectory and road network Folium maps.
+  - `src/hmm_decoder.py` (`generate_folium_map`): Reconstructs predicted route layers and exports interactive Folium maps.
+  - `src/generate_report_plots.py` (`plot_static_geographical_maps`): Exports high-resolution static comparisons for technical reports.
 
 ---
 
 ## 7. API, UI and Two-Laptop Deployment (`src/api.py`)
 
 - **Laptop 1 (FastAPI Server — `src/api.py`):** Loads the trained model and `feature_transform.json`, exposes `POST /predict` (`uvicorn src.api:app --host 0.0.0.0 --port 8000`), runs feature extraction + classifier scoring + Viterbi decoding, and computes accuracy against `.route` server-side without exposing ground-truth labels to the client.
-- **Laptop 2 (Evaluator UI):** Displays the 10 evaluation trips, sends the selected `trip_id` to Laptop 1 over the local network, and displays the returned route coordinates and metrics.
+- **Laptop 2 (Evaluator UI — `ui/index.html`):** Displays the 10 official reserved evaluation trips (`00000015, 00000017, 00000023, 00000030, 00000049, 00000059, 00000067, 00000073, 00000087, 00000094`), sends the selected `trip_id` to Laptop 1 over the local network via `POST /predict`, and displays the returned route coordinates on an interactive OpenStreetMap Leaflet canvas.
+
+### 7.1 Successful API Response & Server CMD Terminal Log
+Below is the actual server-side CMD output on Laptop 1 (`10.0.10.221`) handling a live request from Laptop 2 (`10.0.14.167`) for evaluation Trip `00000049`:
+
+```text
+[15:08:19] [INCOMING REQUEST] POST /predict from 10.0.14.167 | Trip ID: '00000049' (Resolved: evaluator_test)
+[15:08:19] [STAGE 1/4] Loading road network and GPS trajectory from: ./evaluator_test/00000049
+[15:08:19] [STAGE 1/4] Loaded 23,165 nodes, 47,542 road arcs, 2,642 valid GPS observations
+[15:08:19] [STAGE 2/4] Generating candidate road segments via KD-Tree spatial indexing (R = 60m)...
+[15:08:19] [STAGE 2/4] Generated 15,629 candidates in 587.5 ms (Candidate Miss Rate: 0.15%)
+[15:08:20] [STAGE 3/4] Transforming 13 invariant features and scoring with Random Forest...
+[15:08:20] [STAGE 3/4] Model probability scoring completed in 217.9 ms
+[15:08:20] [STAGE 4/4] Executing HMM Viterbi trellis dynamic programming in log-space...
+[15:08:20] [STAGE 4/4] Viterbi decoded 2,642 arcs in 545.3 ms | Route Continuity: 99.43%
+[15:08:21] [EVALUATION] Ground Truth Match: Classifier 96.44% -> Viterbi 99.32% (Gain: +2.88%)
+[15:08:21] [DISPATCH 200] Dispatched 2,642 points to 10.0.14.167 in 2048.3 ms total
+```
