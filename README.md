@@ -128,3 +128,5 @@ The preprocessor exports `artifacts/train_features.parquet` and
 imputation and scaling are fitted on the training trips only; all models consume
 the same exported feature columns. The fitted medians and scaling parameters are
 saved in `artifacts/models/feature_transform.json`.
+The benchmark trains Logistic Regression, Gaussian Naive Bayes, K-Nearest
+Neighbors, Decision Tree, and Random Forest models.
