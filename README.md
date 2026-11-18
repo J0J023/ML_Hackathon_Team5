@@ -64,6 +64,8 @@ ML_Hackathon/
 │   ├── eda.py                         # Exploratory Data Analysis & visualizer
 │   ├── preprocessor.py                # Candidate generator & feature engineering
 │   └── train_models.py                # GroupKFold cross-validation & model benchmarks
+├── notebooks/
+│   └── decision_tree_pipeline.ipynb   # Complete Decision Tree training & evaluation walkthrough
 ├── requirements.txt
 ├── README.md
 └── .gitignore
