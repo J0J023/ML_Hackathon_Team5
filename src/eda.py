@@ -21,7 +21,9 @@ plt.rcParams['axes.edgecolor'] = '#cccccc'
 plt.rcParams['axes.linewidth'] = 0.8
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STUDENT_FOLDER = os.path.join(BASE_DIR, "Student folder")
+_student_folder = os.path.join(BASE_DIR, "Student folder")
+_nested_student_folder = os.path.join(_student_folder, "Student folder")
+STUDENT_FOLDER = _nested_student_folder if os.path.isdir(_nested_student_folder) else _student_folder
 TRAIN_DIR = os.path.join(STUDENT_FOLDER, "train")
 TEST_DIR = os.path.join(STUDENT_FOLDER, "student_test")
 ARTIFACTS_DIR = os.path.join(BASE_DIR, "artifacts")

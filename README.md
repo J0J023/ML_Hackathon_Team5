@@ -116,9 +116,15 @@ pip install -r requirements.txt
 # 1. Run Exploratory Data Analysis & generate Folium map
 python src/eda.py
 
-# 2. Extract spatial candidates & compute engineered features
+# 2. Extract candidates, compute features, impute missing values, and scale using training trips
 python src/preprocessor.py
 
-# 3. Train models with GroupKFold cross-validation & benchmark
+# 3. Train models with GroupKFold cross-validation & benchmark using the exported shared matrices
 python src/train_models.py
 ```
+
+The preprocessor exports `artifacts/train_features.parquet` and
+`artifacts/test_features.parquet` (or compressed CSV fallbacks). Feature
+imputation and scaling are fitted on the training trips only; all models consume
+the same exported feature columns. The fitted medians and scaling parameters are
+saved in `artifacts/models/feature_transform.json`.
