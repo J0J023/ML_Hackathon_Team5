@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map { height: 580px; width: 100%; z-index: 10; border-radius: 0.75rem; }
+        #map { height: 560px; width: 100%; z-index: 10; border-radius: 0.75rem; }
         .legend-box {
             background: rgba(255, 255, 255, 0.95);
             padding: 10px 14px;
@@ -28,6 +28,17 @@
             margin-right: 8px;
             border-radius: 4px;
             vertical-align: middle;
+        }
+        /* Custom scrollbar for dark console */
+        #liveTerminalBox::-webkit-scrollbar {
+            width: 6px;
+        }
+        #liveTerminalBox::-webkit-scrollbar-track {
+            background: #090d16;
+        }
+        #liveTerminalBox::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
         }
     </style>
 </head>
@@ -91,7 +102,6 @@
 
             <!-- 10 Trip Buttons Grid -->
             <div class="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-10 gap-2" id="evaluatorTripsGrid">
-                <!-- Trip buttons dynamically loaded or static fallback -->
                 <button onclick="selectTrip('00000015')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000015">00000015</button>
                 <button onclick="selectTrip('00000017')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000017">00000017</button>
                 <button onclick="selectTrip('00000023')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000023">00000023</button>
@@ -192,12 +202,33 @@
             <div id="map"></div>
         </section>
 
-        <!-- Technical Verification & Terminal Drawer -->
+        <!-- Live Server Terminal Console (Laptop 1 CMD Stream) -->
+        <section class="bg-slate-900 rounded-xl p-5 border border-slate-700 shadow-xl space-y-3 font-mono">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                    <h2 class="text-xs font-bold text-white flex items-center gap-2">
+                        <span>📟</span> Live Server CMD Console (Laptop 1 Real-Time Execution Stream)
+                    </h2>
+                </div>
+                <div class="flex items-center gap-2 text-[11px]">
+                    <span class="text-slate-400">Stream: Active (auto-sync 1.5s)</span>
+                    <button onclick="fetchServerLogs()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded border border-slate-700">
+                        Sync Logs
+                    </button>
+                </div>
+            </div>
+            <div id="liveTerminalBox" class="bg-black/90 p-3.5 rounded-lg border border-slate-800 text-[11px] leading-relaxed max-h-48 overflow-y-auto space-y-1 text-slate-300">
+                <div class="text-slate-500">// Connected to Laptop 1 server log stream. Waiting for incoming requests...</div>
+            </div>
+        </section>
+
+        <!-- Technical Verification & cURL Inspector Drawer -->
         <section class="bg-slate-800/80 rounded-xl p-5 border border-slate-700 text-xs space-y-3">
             <details class="group">
                 <summary class="cursor-pointer font-semibold text-slate-300 hover:text-white flex items-center justify-between">
                     <span class="flex items-center gap-2">
-                        <span>💻</span> API Logs & Technical Verification Payload (Laptop 2 Client)
+                        <span>💻</span> Network Request & Response Payload Inspector
                     </span>
                     <span class="text-slate-500 group-open:rotate-180 transition">▼</span>
                 </summary>
@@ -235,14 +266,12 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
         let map, gpsLayerGroup, predictedRouteLayer, referenceRouteLayer, markersLayer;
         let activeTripId = null;
 
-        // Auto-detect server URL from current host or localStorage
         function getApiUrl() {
             const input = document.getElementById("apiUrlInput").value.trim();
             return input.replace(/\/+$/, "");
         }
 
         function initMap() {
-            // Default center around Germany / Frankfurt (coordinates of the dataset)
             map = L.map('map', {
                 center: [50.1109, 8.6821],
                 zoom: 13,
@@ -260,7 +289,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
             referenceRouteLayer = L.layerGroup().addTo(map);
             markersLayer = L.layerGroup().addTo(map);
 
-            // Add custom map legend
             const legend = L.control({ position: 'bottomright' });
             legend.onAdd = function () {
                 const div = L.DomUtil.create('div', 'legend-box');
@@ -273,6 +301,32 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
                 return div;
             };
             legend.addTo(map);
+        }
+
+        async function fetchServerLogs() {
+            const apiUrl = getApiUrl();
+            try {
+                const res = await fetch(`${apiUrl}/api/logs`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const box = document.getElementById("liveTerminalBox");
+                    if (data.logs && data.logs.length > 0) {
+                        box.innerHTML = data.logs.map(log => {
+                            let colorClass = "text-sky-400";
+                            if (log.color === "32") colorClass = "text-emerald-400 font-bold";
+                            else if (log.color === "33") colorClass = "text-amber-400";
+                            else if (log.color === "35") colorClass = "text-purple-400 font-bold";
+                            else if (log.color === "31") colorClass = "text-rose-400 font-bold";
+                            else if (log.color === "34") colorClass = "text-blue-400";
+
+                            return `<div><span class="text-slate-500">[${log.timestamp}]</span> <span class="${colorClass}">[${log.stage}]</span> <span class="text-slate-200">${log.message}</span></div>`;
+                        }).join("");
+                        box.scrollTop = box.scrollHeight;
+                    }
+                }
+            } catch (err) {
+                // quiet
+            }
         }
 
         async function checkApiHealth() {
@@ -292,6 +346,7 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
                     statusDot.className = "w-3 h-3 rounded-full bg-emerald-400";
                     statusText.innerText = `Online (${latency} ms) • ${data.model || 'API Ready'}`;
                     localStorage.setItem("pathsnap_api_url", apiUrl);
+                    fetchServerLogs();
                     return true;
                 } else {
                     throw new Error(`HTTP ${res.status}`);
@@ -308,7 +363,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
             document.getElementById("activeTripBadge").innerText = `Trip: ${tripId}`;
             document.getElementById("loadingIndicator").classList.remove("hidden");
 
-            // Update button styles
             document.querySelectorAll(".trip-btn").forEach(btn => {
                 if (btn.getAttribute("data-trip") === tripId) {
                     btn.classList.add("bg-indigo-600", "ring-2", "ring-indigo-300");
@@ -323,7 +377,8 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
             const curlCmd = `curl -X POST "${apiUrl}/predict" \\\n  -H "Content-Type: application/json" \\\n  -d '{"trip_id": "${tripId}"}'`;
             document.getElementById("curlCommand").innerText = curlCmd;
 
-            const t0 = performance.now();
+            fetchServerLogs();
+
             try {
                 const response = await fetch(`${apiUrl}/predict`, {
                     method: "POST",
@@ -338,16 +393,17 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
 
                 const data = await response.json();
                 renderTripResults(data);
+                fetchServerLogs();
             } catch (error) {
                 alert(`Inference Request Failed:\n${error.message}\n\nPlease verify that Laptop 1 is running: uvicorn src.api:app --host 0.0.0.0 --port 8000`);
                 console.error("Inference Error:", error);
             } finally {
                 document.getElementById("loadingIndicator").classList.add("hidden");
+                fetchServerLogs();
             }
         }
 
         function renderTripResults(data) {
-            // Update Scorecards
             const m = data.metrics;
             document.getElementById("metricViterbiAcc").innerText = m.hmm_viterbi_accuracy != null 
                 ? (m.hmm_viterbi_accuracy * 100).toFixed(2) + "%" : "N/A";
@@ -373,7 +429,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
             document.getElementById("metricDimensions").innerText = `${m.total_observations.toLocaleString()} Pts`;
             document.getElementById("metricPartition").innerText = `Partition: ${data.partition} (${m.total_candidates.toLocaleString()} candidates)`;
 
-            // Response JSON Drawer
             const displaySubset = {
                 trip_id: data.trip_id,
                 partition: data.partition,
@@ -383,7 +438,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
             };
             document.getElementById("responseJson").innerText = JSON.stringify(displaySubset, null, 2);
 
-            // Clear existing map layers
             gpsLayerGroup.clearLayers();
             predictedRouteLayer.clearLayers();
             referenceRouteLayer.clearLayers();
@@ -391,7 +445,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
 
             const allPoints = [];
 
-            // 1. Render Raw GPS Observations (Blue Dots)
             if (data.raw_gps_coordinates && data.raw_gps_coordinates.length > 0) {
                 data.raw_gps_coordinates.forEach((pt, idx) => {
                     allPoints.push(pt);
@@ -407,7 +460,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
                 });
             }
 
-            // 2. Render Predicted Route (Red Polyline)
             if (data.predicted_coordinates && data.predicted_coordinates.length > 0) {
                 const predLine = L.polyline(data.predicted_coordinates, {
                     color: "#ef4444",
@@ -418,7 +470,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
                 predictedRouteLayer.addLayer(predLine);
             }
 
-            // 3. Render Ground Truth Reference Route (Green Polyline)
             if (data.reference_coordinates && data.reference_coordinates.length > 0) {
                 const refLine = L.polyline(data.reference_coordinates, {
                     color: "#10b981",
@@ -430,7 +481,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
                 referenceRouteLayer.addLayer(refLine);
             }
 
-            // Add Start / Finish Markers
             if (allPoints.length > 0) {
                 const startPt = allPoints[0];
                 const endPt = allPoints[allPoints.length - 1];
@@ -449,7 +499,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
                 markersLayer.addLayer(L.marker(startPt, { icon: startIcon }));
                 markersLayer.addLayer(L.marker(endPt, { icon: endIcon }));
 
-                // Fit map viewport to the route
                 map.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40] });
             }
         }
@@ -479,7 +528,6 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
             selectTrip(input);
         }
 
-        // Initialize application on page load
         window.addEventListener("DOMContentLoaded", () => {
             const savedUrl = localStorage.getItem("pathsnap_api_url");
             if (savedUrl) {
@@ -491,10 +539,12 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
             initMap();
             checkApiHealth().then(online => {
                 if (online) {
-                    // Pre-select trip 00000015
                     selectTrip("00000015");
                 }
             });
+
+            // Start live log streaming polling
+            setInterval(fetchServerLogs, 1500);
         });
     </script>
 </body>

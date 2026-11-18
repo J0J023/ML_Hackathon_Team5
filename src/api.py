@@ -6,6 +6,7 @@ import math
 import os
 import sys
 import time
+from collections import deque
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -26,6 +27,28 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger("pathsnap.api")
+
+# Rolling live logs buffer for server and client inspection (last 200 events)
+SERVER_LOGS = deque(maxlen=200)
+
+
+def live_log(stage: str, message: str, color_code: str = "36"):
+    """Output real-time timestamped ANSI colored logs to terminal and store in buffer."""
+    timestamp = time.strftime("%H:%M:%S")
+    # ANSI escape sequences: 31=red, 32=green, 33=yellow, 34=blue, 35=magenta, 36=cyan
+    formatted_console = f"\033[1;{color_code}m[{timestamp}] [{stage}]\033[0m {message}"
+    print(formatted_console)
+    sys.stdout.flush()
+
+    SERVER_LOGS.append(
+        {
+            "timestamp": timestamp,
+            "stage": stage,
+            "message": message,
+            "color": color_code,
+        }
+    )
+
 
 try:
     from .preprocessor import (
@@ -149,13 +172,11 @@ def resolve_trip_dir(trip_id: str) -> tuple[str, str]:
     clean_id = trip_id.strip()
     candidate_names = [clean_id]
 
-    # Handle numeric representations with leading zeros
     digits_only = "".join(filter(str.isdigit, clean_id))
     if digits_only:
         num = int(digits_only)
         candidate_names.extend([f"{num:08d}", f"{num}"])
 
-    # Search evaluator_test partition first (Evaluation trips)
     search_locations = [
         (EVALUATOR_DIR, "evaluator_test"),
         (os.path.join(STUDENT_FOLDER, "student_test"), "student_test"),
@@ -288,7 +309,7 @@ def project_predicted_coordinates(
         if not matching.empty:
             ratio = float(matching.iloc[0]["proj_ratio"])
         else:
-            ratio = 0.5  # fallback midpoint if arc wasn't in candidate set
+            ratio = 0.5
 
         start = nodes_m[arcs[arc_id, 0]]
         end = nodes_m[arcs[arc_id, 1]]
@@ -309,7 +330,6 @@ def extract_reference_coordinates(
     for arc_id in route:
         u_idx = arcs[arc_id, 0]
         v_idx = arcs[arc_id, 1]
-        # nodes format is [lon, lat]
         u_lat, u_lon = float(nodes[u_idx, 1]), float(nodes[u_idx, 0])
         v_lat, v_lon = float(nodes[v_idx, 1]), float(nodes[v_idx, 0])
         if not coords or coords[-1] != [u_lat, u_lon]:
@@ -329,10 +349,13 @@ def route_continuity(predicted_arc_ids: list[int], arcs: np.ndarray) -> Optional
 
 
 @app.get("/health")
-def health():
+def health(req: Request):
+    client_ip = req.client.host if req.client else "unknown"
+    live_log("HEALTH PING", f"Ping from {client_ip} -> Server status: ONLINE (Random Forest Model Ready)", "32")
     try:
         load_inference_assets()
     except (FileNotFoundError, ValueError) as exc:
+        live_log("HEALTH ERROR", str(exc), "31")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {
         "status": "ok",
@@ -343,9 +366,16 @@ def health():
     }
 
 
+@app.get("/api/logs")
+def get_live_logs():
+    """Return rolling log entries for the live UI terminal stream."""
+    return {"logs": list(SERVER_LOGS)}
+
+
 @app.get("/api/trips")
-def list_available_trips():
-    """Return available trips with metadata for the evaluator UI."""
+def list_available_trips(req: Request):
+    client_ip = req.client.host if req.client else "unknown"
+    live_log("TRIP QUERY", f"Available trips list fetched by client {client_ip}", "36")
     trips_metadata = []
     for tid in EVALUATOR_TRIP_IDS:
         trip_dir = os.path.join(EVALUATOR_DIR, tid)
@@ -373,34 +403,40 @@ def predict_trip(request: TripRequest, req: Request):
 
     trip_dir, partition = resolve_trip_dir(request.trip_id)
 
-    # Server-Side CMD Demonstration Logging (Section 7 & 10 of Guidelines)
+    # Real-time incremental terminal & UI logging
     print("\n" + "=" * 80)
-    print(f"  [PATHSNAP INFERENCE REQUEST] {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"  Client Host : {client_ip}")
-    print(f"  Target Trip : {request.trip_id} (Resolved partition: {partition})")
-    print(f"  Directory   : {trip_dir}")
-    print("-" * 80)
+    live_log("INCOMING REQUEST", f"POST /predict from {client_ip} | Trip ID: '{request.trip_id}' (Resolved: {partition})", "35")
 
     try:
         model, transform = load_inference_assets()
     except (FileNotFoundError, ValueError) as exc:
-        logger.error(f"Asset loading failed: {exc}")
+        live_log("ASSET ERROR", f"Model/Transform load failed: {exc}", "31")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
+        live_log("STAGE 1/4", f"Loading road network and GPS trajectory from: {trip_dir}", "34")
         trip_id, nodes, arcs, raw_track, route = load_trip_data(trip_dir)
         track, _, _ = clean_gps_track(raw_track)
-        features, _ = extract_trip_features(trip_dir, include_true_arc=False)
+        live_log("STAGE 1/4", f"Loaded {len(nodes):,} nodes, {len(arcs):,} road arcs, {len(track):,} valid GPS observations", "34")
+
+        live_log("STAGE 2/4", "Generating candidate road segments via KD-Tree spatial indexing (R = 60m)...", "36")
+        cand_t0 = time.perf_counter()
+        features, miss_rate = extract_trip_features(trip_dir, include_true_arc=False)
+        cand_dt = (time.perf_counter() - cand_t0) * 1000.0
+        live_log("STAGE 2/4", f"Generated {len(features):,} candidates in {cand_dt:.1f} ms (Candidate Miss Rate: {miss_rate:.2%})", "36")
     except OSError as exc:
-        logger.error(f"Trip data load failed: {exc}")
+        live_log("DATA ERROR", f"Trip data loading failed: {exc}", "31")
         raise HTTPException(status_code=422, detail=f"Could not load trip data: {exc}") from exc
 
     if features.empty or len(track) == 0:
+        live_log("DATA ERROR", f"Trip '{trip_id}' has no usable GPS candidates.", "31")
         raise HTTPException(
             status_code=422, detail=f"Trip '{trip_id}' has no usable GPS candidates."
         )
 
     total_candidates = len(features)
+    live_log("STAGE 3/4", "Transforming 13 invariant features and scoring with Random Forest...", "33")
+    score_t0 = time.perf_counter()
     transformed = transform_candidate_features(features, transform)
     class_index = list(model.classes_).index(1)
     probabilities = model.predict_proba(transformed)[:, class_index]
@@ -416,7 +452,10 @@ def predict_trip(request: TripRequest, req: Request):
         int(group.iloc[int(np.argmax(group["probability"].to_numpy()))]["arc_id"])
         for group in candidate_groups
     ]
+    score_dt = (time.perf_counter() - score_t0) * 1000.0
+    live_log("STAGE 3/4", f"Model probability scoring completed in {score_dt:.1f} ms", "33")
 
+    live_log("STAGE 4/4", "Executing HMM Viterbi trellis dynamic programming in log-space...", "32")
     lat_mean = float(np.mean(track[:, 1]))
     kx = 111320.0 * math.cos(math.radians(lat_mean))
     ky = 110540.0
@@ -430,6 +469,8 @@ def predict_trip(request: TripRequest, req: Request):
     viterbi_t0 = time.perf_counter()
     predicted_arc_ids = viterbi_decode(candidate_groups, arcs, nodes_m)
     viterbi_ms = (time.perf_counter() - viterbi_t0) * 1000.0
+    continuity = route_continuity(predicted_arc_ids, arcs)
+    live_log("STAGE 4/4", f"Viterbi decoded {len(predicted_arc_ids):,} arcs in {viterbi_ms:.1f} ms | Route Continuity: {continuity * 100:.2f}%", "32")
 
     predicted_coordinates = project_predicted_coordinates(
         predicted_arc_ids, candidate_groups, arcs, nodes, track
@@ -448,18 +489,10 @@ def predict_trip(request: TripRequest, req: Request):
         viterbi_accuracy = float(np.mean(np.asarray(predicted_arc_ids) == true_arc_ids))
         improvement = float(viterbi_accuracy - classifier_accuracy)
         reference_coords = extract_reference_coordinates(route, arcs, nodes)
+        live_log("EVALUATION", f"Ground Truth Match: Classifier {classifier_accuracy*100:.2f}% -> Viterbi {viterbi_accuracy*100:.2f}% (Gain: {improvement*100:+.2f}%)", "32")
 
-    continuity = route_continuity(predicted_arc_ids, arcs)
-    inference_time = round((time.perf_counter() - started_at) * 1000.0, 3)
-
-    # Print live metrics to terminal for evaluator demonstration
-    print(f"  Nodes : {len(nodes):,} | Arcs : {len(arcs):,} | GPS Points : {len(track):,}")
-    print(f"  Candidate Segments Evaluated : {total_candidates:,}")
-    if viterbi_accuracy is not None:
-        print(f"  Classifier-Only Top-1 Acc    : {classifier_accuracy * 100:.2f}%")
-        print(f"  HMM Viterbi Decoded Acc      : {viterbi_accuracy * 100:.2f}% (Gain: {improvement * 100:+.2f}%)")
-    print(f"  Reconstructed Route Continuity: {continuity * 100:.2f}%" if continuity else "  Continuity : N/A")
-    print(f"  Total Processing Latency     : {inference_time:.2f} ms (Viterbi: {viterbi_ms:.2f} ms)")
+    total_time = round((time.perf_counter() - started_at) * 1000.0, 3)
+    live_log("DISPATCH 200", f"Dispatched {len(predicted_coordinates):,} points to {client_ip} in {total_time:.1f} ms total", "36")
     print("=" * 80 + "\n")
 
     metrics = PredictionMetrics(
@@ -467,7 +500,7 @@ def predict_trip(request: TripRequest, req: Request):
         hmm_viterbi_accuracy=viterbi_accuracy,
         route_continuity=continuity,
         accuracy_improvement=improvement,
-        inference_time_ms=inference_time,
+        inference_time_ms=total_time,
         total_observations=len(track),
         total_candidates=total_candidates,
         partition=partition,
@@ -492,7 +525,9 @@ if os.path.isdir(UI_DIR):
 
     @app.get("/")
     @app.get("/ui")
-    def serve_ui():
+    def serve_ui(req: Request):
+        client_ip = req.client.host if req.client else "unknown"
+        live_log("UI CONNECT", f"Evaluator UI dashboard accessed from {client_ip}", "35")
         index_file = os.path.join(UI_DIR, "index.html")
         if os.path.isfile(index_file):
             return FileResponse(index_file)
