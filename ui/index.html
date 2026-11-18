@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PathSnap — Distributed Map-Matching & Route Reconstruction (Team 5)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map { height: 580px; width: 100%; z-index: 10; border-radius: 0.75rem; }
+        .legend-box {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 14px;
+            font-size: 13px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            line-height: 20px;
+            color: #333;
+            border: 1px solid #e2e8f0;
+        }
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            display: inline-block;
+            margin-right: 8px;
+            border-radius: 4px;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans antialiased">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-800 border-b border-slate-700 px-6 py-4 sticky top-0 z-50 shadow-lg">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-3">
+                    <span class="bg-indigo-600 text-white text-xs font-bold px-2.5 py-1 rounded tracking-wide uppercase">UE24CS352A</span>
+                    <h1 class="text-xl md:text-2xl font-black tracking-tight text-white flex items-center gap-2">
+                        PathSnap <span class="text-indigo-400 font-medium text-base">| Evaluator Interface</span>
+                    </h1>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">
+                    Distributed GPS Map-Matching & Sequential Route Reconstruction &bull; 
+                    <span class="text-slate-300 font-semibold">Team 5 Live Demo (Laptop 2 Client)</span>
+                </p>
+            </div>
+
+            <!-- Server Connection Settings -->
+            <div class="flex items-center gap-3 bg-slate-900/80 p-2 rounded-lg border border-slate-700">
+                <div class="flex items-center gap-2">
+                    <div id="statusDot" class="w-3 h-3 rounded-full bg-amber-400 animate-pulse"></div>
+                    <span id="statusText" class="text-xs font-medium text-slate-300">Checking API...</span>
+                </div>
+                <input id="apiUrlInput" type="text" value="http://localhost:8000" 
+                    placeholder="http://<laptop1_ip>:8000"
+                    class="bg-slate-800 border border-slate-600 text-slate-200 text-xs rounded px-2.5 py-1.5 w-48 focus:outline-none focus:border-indigo-500 font-mono" />
+                <button id="btnConnect" onclick="checkApiHealth()" 
+                    class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-1.5 rounded transition">
+                    Test Ping
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto px-6 py-6 flex-1 w-full space-y-6">
+
+        <!-- 10 Evaluator Trips Selector Section -->
+        <section class="bg-slate-800/90 rounded-xl p-5 border border-slate-700 shadow-md">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-base font-bold text-white flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                        </svg>
+                        Evaluator Test Trips (Evaluation Partition)
+                    </h2>
+                    <p class="text-xs text-slate-400">Click ANY trip button below to evaluate the complete end-to-end pipeline on Laptop 1.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="pickRandomEvaluatorTrip()" 
+                        class="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-3.5 py-2 rounded-lg shadow flex items-center gap-1.5 transition">
+                        <span>🎲</span> Random Evaluator Trip
+                    </button>
+                </div>
+            </div>
+
+            <!-- 10 Trip Buttons Grid -->
+            <div class="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-10 gap-2" id="evaluatorTripsGrid">
+                <!-- Trip buttons dynamically loaded or static fallback -->
+                <button onclick="selectTrip('00000015')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000015">00000015</button>
+                <button onclick="selectTrip('00000017')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000017">00000017</button>
+                <button onclick="selectTrip('00000023')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000023">00000023</button>
+                <button onclick="selectTrip('00000030')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000030">00000030</button>
+                <button onclick="selectTrip('00000049')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000049">00000049</button>
+                <button onclick="selectTrip('00000059')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000059">00000059</button>
+                <button onclick="selectTrip('00000067')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000067">00000067</button>
+                <button onclick="selectTrip('00000073')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000073">00000073</button>
+                <button onclick="selectTrip('00000087')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000087">00000087</button>
+                <button onclick="selectTrip('00000094')" class="trip-btn bg-slate-700 hover:bg-indigo-600 text-slate-100 font-mono text-xs font-semibold py-2.5 px-2 rounded-lg border border-slate-600 text-center transition" data-trip="00000094">00000094</button>
+            </div>
+
+            <!-- Custom Trip Option -->
+            <div class="mt-3 pt-3 border-t border-slate-700 flex flex-wrap items-center justify-between text-xs gap-3">
+                <span class="text-slate-400">Want to test a student_test or train trip?</span>
+                <div class="flex items-center gap-2">
+                    <input id="customTripInput" type="text" placeholder="e.g. 00000000" 
+                        class="bg-slate-900 border border-slate-600 rounded px-2.5 py-1 text-slate-200 text-xs font-mono w-32 focus:outline-none focus:border-indigo-500">
+                    <button onclick="selectCustomTrip()" class="bg-slate-700 hover:bg-slate-600 text-white font-medium px-3 py-1 rounded transition">
+                        Run Custom Trip
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Scorecards -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <!-- Viterbi Accuracy -->
+            <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-md">
+                <div class="text-slate-400 text-xs font-medium uppercase tracking-wider">HMM Viterbi Accuracy</div>
+                <div class="text-2xl font-black text-emerald-400 mt-1" id="metricViterbiAcc">--</div>
+                <div class="text-[11px] text-emerald-500 font-semibold mt-1" id="metricImprovement">--</div>
+            </div>
+
+            <!-- Route Continuity -->
+            <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-md">
+                <div class="text-slate-400 text-xs font-medium uppercase tracking-wider">Route Continuity</div>
+                <div class="text-2xl font-black text-indigo-400 mt-1" id="metricContinuity">--</div>
+                <div class="text-[11px] text-slate-400 mt-1">Topological arc connectivity</div>
+            </div>
+
+            <!-- Classifier-Only Accuracy -->
+            <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-md">
+                <div class="text-slate-400 text-xs font-medium uppercase tracking-wider">Classifier Baseline</div>
+                <div class="text-2xl font-black text-slate-300 mt-1" id="metricClassifierAcc">--</div>
+                <div class="text-[11px] text-slate-400 mt-1">Pointwise ML Top-1</div>
+            </div>
+
+            <!-- Latency -->
+            <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-md">
+                <div class="text-slate-400 text-xs font-medium uppercase tracking-wider">Inference Latency</div>
+                <div class="text-2xl font-black text-amber-400 mt-1" id="metricLatency">--</div>
+                <div class="text-[11px] text-slate-400 mt-1" id="metricPerObs">Server execution time</div>
+            </div>
+
+            <!-- Scale -->
+            <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-md">
+                <div class="text-slate-400 text-xs font-medium uppercase tracking-wider">Trip Dimension</div>
+                <div class="text-xl font-bold text-sky-400 mt-1" id="metricDimensions">--</div>
+                <div class="text-[11px] text-slate-400 mt-1" id="metricPartition">Partition: --</div>
+            </div>
+        </section>
+
+        <!-- Map & Controls Layout -->
+        <section class="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-lg space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-base font-bold text-white flex items-center gap-2">
+                        <span>🗺️</span> Reconstructed Map View
+                    </h2>
+                    <span id="activeTripBadge" class="bg-indigo-900/80 text-indigo-300 border border-indigo-700 text-xs font-mono px-2.5 py-0.5 rounded-full font-semibold">
+                        Trip: None
+                    </span>
+                    <span id="loadingIndicator" class="hidden text-xs text-amber-400 font-semibold animate-pulse">
+                        ⏳ Inferencing on Laptop 1...
+                    </span>
+                </div>
+
+                <!-- Layer Toggles -->
+                <div class="flex flex-wrap items-center gap-3 text-xs bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-700">
+                    <span class="text-slate-400 font-medium">Layers:</span>
+                    <label class="inline-flex items-center gap-1.5 text-blue-400 cursor-pointer">
+                        <input id="toggleGps" type="checkbox" checked onchange="toggleLayers()" class="rounded bg-slate-800 border-slate-600 text-blue-600 focus:ring-0">
+                        <span>● GPS Pings</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 text-red-400 cursor-pointer">
+                        <input id="togglePredicted" type="checkbox" checked onchange="toggleLayers()" class="rounded bg-slate-800 border-slate-600 text-red-600 focus:ring-0">
+                        <span>━ Predicted Route</span>
+                    </label>
+                    <label class="inline-flex items-center gap-1.5 text-emerald-400 cursor-pointer">
+                        <input id="toggleReference" type="checkbox" checked onchange="toggleLayers()" class="rounded bg-slate-800 border-slate-600 text-emerald-600 focus:ring-0">
+                        <span>━ Ground Truth</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Leaflet Map Container -->
+            <div id="map"></div>
+        </section>
+
+        <!-- Technical Verification & Terminal Drawer -->
+        <section class="bg-slate-800/80 rounded-xl p-5 border border-slate-700 text-xs space-y-3">
+            <details class="group">
+                <summary class="cursor-pointer font-semibold text-slate-300 hover:text-white flex items-center justify-between">
+                    <span class="flex items-center gap-2">
+                        <span>💻</span> API Logs & Technical Verification Payload (Laptop 2 Client)
+                    </span>
+                    <span class="text-slate-500 group-open:rotate-180 transition">▼</span>
+                </summary>
+                <div class="mt-3 pt-3 border-t border-slate-700 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <div class="text-slate-400 font-semibold mb-1">Last Request cURL:</div>
+                        <pre id="curlCommand" class="bg-slate-950 p-3 rounded font-mono text-[11px] text-slate-300 overflow-x-auto border border-slate-800">
+curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d '{"trip_id": "00000015"}'
+                        </pre>
+                    </div>
+                    <div>
+                        <div class="text-slate-400 font-semibold mb-1">Server Response JSON (Subset):</div>
+                        <pre id="responseJson" class="bg-slate-950 p-3 rounded font-mono text-[11px] text-emerald-400 overflow-x-auto max-h-36 border border-slate-800">
+// Response payload will appear here after running inference
+                        </pre>
+                    </div>
+                </div>
+            </details>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-800 border-t border-slate-700 px-6 py-4 text-center text-xs text-slate-500">
+        PES University &bull; UE24CS352A Machine Learning Hackathon 2026 &bull; PathSnap Team 5
+    </footer>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        const EVALUATOR_TRIPS = [
+            "00000015", "00000017", "00000023", "00000030", "00000049",
+            "00000059", "00000067", "00000073", "00000087", "00000094"
+        ];
+
+        let map, gpsLayerGroup, predictedRouteLayer, referenceRouteLayer, markersLayer;
+        let activeTripId = null;
+
+        // Auto-detect server URL from current host or localStorage
+        function getApiUrl() {
+            const input = document.getElementById("apiUrlInput").value.trim();
+            return input.replace(/\/+$/, "");
+        }
+
+        function initMap() {
+            // Default center around Germany / Frankfurt (coordinates of the dataset)
+            map = L.map('map', {
+                center: [50.1109, 8.6821],
+                zoom: 13,
+                zoomControl: true
+            });
+
+            // Standard OpenStreetMap tiles (Reliable, no API keys, no blocked cartocdn)
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            gpsLayerGroup = L.layerGroup().addTo(map);
+            predictedRouteLayer = L.layerGroup().addTo(map);
+            referenceRouteLayer = L.layerGroup().addTo(map);
+            markersLayer = L.layerGroup().addTo(map);
+
+            // Add custom map legend
+            const legend = L.control({ position: 'bottomright' });
+            legend.onAdd = function () {
+                const div = L.DomUtil.create('div', 'legend-box');
+                div.innerHTML = `
+                    <div class="font-bold mb-1 text-slate-800">Map Legend</div>
+                    <div><span class="legend-color" style="background: #3b82f6; border-radius: 50%;"></span>Raw GPS Points</div>
+                    <div><span class="legend-color" style="background: #ef4444;"></span>Predicted Route (HMM)</div>
+                    <div><span class="legend-color" style="background: #10b981;"></span>Ground Truth Route</div>
+                `;
+                return div;
+            };
+            legend.addTo(map);
+        }
+
+        async function checkApiHealth() {
+            const statusDot = document.getElementById("statusDot");
+            const statusText = document.getElementById("statusText");
+            const apiUrl = getApiUrl();
+
+            statusDot.className = "w-3 h-3 rounded-full bg-amber-400 animate-pulse";
+            statusText.innerText = "Connecting to " + apiUrl + "...";
+
+            const t0 = performance.now();
+            try {
+                const res = await fetch(`${apiUrl}/health`, { method: "GET" });
+                if (res.ok) {
+                    const data = await res.json();
+                    const latency = Math.round(performance.now() - t0);
+                    statusDot.className = "w-3 h-3 rounded-full bg-emerald-400";
+                    statusText.innerText = `Online (${latency} ms) • ${data.model || 'API Ready'}`;
+                    localStorage.setItem("pathsnap_api_url", apiUrl);
+                    return true;
+                } else {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+            } catch (err) {
+                statusDot.className = "w-3 h-3 rounded-full bg-red-500";
+                statusText.innerText = "Offline (Check Laptop 1 IP/Port)";
+                return false;
+            }
+        }
+
+        async function selectTrip(tripId) {
+            activeTripId = tripId;
+            document.getElementById("activeTripBadge").innerText = `Trip: ${tripId}`;
+            document.getElementById("loadingIndicator").classList.remove("hidden");
+
+            // Update button styles
+            document.querySelectorAll(".trip-btn").forEach(btn => {
+                if (btn.getAttribute("data-trip") === tripId) {
+                    btn.classList.add("bg-indigo-600", "ring-2", "ring-indigo-300");
+                    btn.classList.remove("bg-slate-700");
+                } else {
+                    btn.classList.remove("bg-indigo-600", "ring-2", "ring-indigo-300");
+                    btn.classList.add("bg-slate-700");
+                }
+            });
+
+            const apiUrl = getApiUrl();
+            const curlCmd = `curl -X POST "${apiUrl}/predict" \\\n  -H "Content-Type: application/json" \\\n  -d '{"trip_id": "${tripId}"}'`;
+            document.getElementById("curlCommand").innerText = curlCmd;
+
+            const t0 = performance.now();
+            try {
+                const response = await fetch(`${apiUrl}/predict`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ trip_id: tripId })
+                });
+
+                if (!response.ok) {
+                    const errDetail = await response.text();
+                    throw new Error(`Server returned HTTP ${response.status}: ${errDetail}`);
+                }
+
+                const data = await response.json();
+                renderTripResults(data);
+            } catch (error) {
+                alert(`Inference Request Failed:\n${error.message}\n\nPlease verify that Laptop 1 is running: uvicorn src.api:app --host 0.0.0.0 --port 8000`);
+                console.error("Inference Error:", error);
+            } finally {
+                document.getElementById("loadingIndicator").classList.add("hidden");
+            }
+        }
+
+        function renderTripResults(data) {
+            // Update Scorecards
+            const m = data.metrics;
+            document.getElementById("metricViterbiAcc").innerText = m.hmm_viterbi_accuracy != null 
+                ? (m.hmm_viterbi_accuracy * 100).toFixed(2) + "%" : "N/A";
+            
+            if (m.accuracy_improvement != null) {
+                const sign = m.accuracy_improvement >= 0 ? "+" : "";
+                document.getElementById("metricImprovement").innerText = 
+                    `${sign}${(m.accuracy_improvement * 100).toFixed(2)}% vs Classifier`;
+            } else {
+                document.getElementById("metricImprovement").innerText = "Ground truth evaluated";
+            }
+
+            document.getElementById("metricContinuity").innerText = m.route_continuity != null
+                ? (m.route_continuity * 100).toFixed(2) + "%" : "N/A";
+
+            document.getElementById("metricClassifierAcc").innerText = m.classifier_only_accuracy != null
+                ? (m.classifier_only_accuracy * 100).toFixed(2) + "%" : "N/A";
+
+            document.getElementById("metricLatency").innerText = m.inference_time_ms.toFixed(1) + " ms";
+            const perObs = (m.inference_time_ms / Math.max(1, m.total_observations)).toFixed(3);
+            document.getElementById("metricPerObs").innerText = `${perObs} ms / observation`;
+
+            document.getElementById("metricDimensions").innerText = `${m.total_observations.toLocaleString()} Pts`;
+            document.getElementById("metricPartition").innerText = `Partition: ${data.partition} (${m.total_candidates.toLocaleString()} candidates)`;
+
+            // Response JSON Drawer
+            const displaySubset = {
+                trip_id: data.trip_id,
+                partition: data.partition,
+                predicted_arcs_count: data.predicted_arc_ids.length,
+                metrics: data.metrics,
+                first_5_arcs: data.predicted_arc_ids.slice(0, 5)
+            };
+            document.getElementById("responseJson").innerText = JSON.stringify(displaySubset, null, 2);
+
+            // Clear existing map layers
+            gpsLayerGroup.clearLayers();
+            predictedRouteLayer.clearLayers();
+            referenceRouteLayer.clearLayers();
+            markersLayer.clearLayers();
+
+            const allPoints = [];
+
+            // 1. Render Raw GPS Observations (Blue Dots)
+            if (data.raw_gps_coordinates && data.raw_gps_coordinates.length > 0) {
+                data.raw_gps_coordinates.forEach((pt, idx) => {
+                    allPoints.push(pt);
+                    const circle = L.circleMarker(pt, {
+                        radius: 3,
+                        fillColor: "#3b82f6",
+                        color: "#1d4ed8",
+                        weight: 1,
+                        opacity: 0.8,
+                        fillOpacity: 0.6
+                    }).bindPopup(`<b>GPS Observation #${idx}</b><br>Lat: ${pt[0].toFixed(6)}<br>Lon: ${pt[1].toFixed(6)}`);
+                    gpsLayerGroup.addLayer(circle);
+                });
+            }
+
+            // 2. Render Predicted Route (Red Polyline)
+            if (data.predicted_coordinates && data.predicted_coordinates.length > 0) {
+                const predLine = L.polyline(data.predicted_coordinates, {
+                    color: "#ef4444",
+                    weight: 4,
+                    opacity: 0.9,
+                    smoothFactor: 1.0
+                }).bindPopup(`<b>HMM Viterbi Predicted Route</b><br>${data.predicted_coordinates.length} points reconstructed`);
+                predictedRouteLayer.addLayer(predLine);
+            }
+
+            // 3. Render Ground Truth Reference Route (Green Polyline)
+            if (data.reference_coordinates && data.reference_coordinates.length > 0) {
+                const refLine = L.polyline(data.reference_coordinates, {
+                    color: "#10b981",
+                    weight: 3.5,
+                    opacity: 0.85,
+                    dashArray: "6, 4",
+                    smoothFactor: 1.0
+                }).bindPopup(`<b>Ground Truth Route</b><br>Reference vehicle path`);
+                referenceRouteLayer.addLayer(refLine);
+            }
+
+            // Add Start / Finish Markers
+            if (allPoints.length > 0) {
+                const startPt = allPoints[0];
+                const endPt = allPoints[allPoints.length - 1];
+
+                const startIcon = L.divIcon({
+                    html: '<div class="bg-emerald-500 text-white font-bold text-[10px] px-1.5 py-0.5 rounded shadow border border-white">START</div>',
+                    className: '',
+                    iconSize: [40, 20]
+                });
+                const endIcon = L.divIcon({
+                    html: '<div class="bg-red-500 text-white font-bold text-[10px] px-1.5 py-0.5 rounded shadow border border-white">FINISH</div>',
+                    className: '',
+                    iconSize: [40, 20]
+                });
+
+                markersLayer.addLayer(L.marker(startPt, { icon: startIcon }));
+                markersLayer.addLayer(L.marker(endPt, { icon: endIcon }));
+
+                // Fit map viewport to the route
+                map.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40] });
+            }
+        }
+
+        function toggleLayers() {
+            const showGps = document.getElementById("toggleGps").checked;
+            const showPred = document.getElementById("togglePredicted").checked;
+            const showRef = document.getElementById("toggleReference").checked;
+
+            if (showGps) map.addLayer(gpsLayerGroup); else map.removeLayer(gpsLayerGroup);
+            if (showPred) map.addLayer(predictedRouteLayer); else map.removeLayer(predictedRouteLayer);
+            if (showRef) map.addLayer(referenceRouteLayer); else map.removeLayer(referenceRouteLayer);
+        }
+
+        function pickRandomEvaluatorTrip() {
+            const randomIndex = Math.floor(Math.random() * EVALUATOR_TRIPS.length);
+            const randomTrip = EVALUATOR_TRIPS[randomIndex];
+            selectTrip(randomTrip);
+        }
+
+        function selectCustomTrip() {
+            const input = document.getElementById("customTripInput").value.trim();
+            if (!input) {
+                alert("Please enter a valid trip ID (e.g. 00000000, 00000015).");
+                return;
+            }
+            selectTrip(input);
+        }
+
+        // Initialize application on page load
+        window.addEventListener("DOMContentLoaded", () => {
+            const savedUrl = localStorage.getItem("pathsnap_api_url");
+            if (savedUrl) {
+                document.getElementById("apiUrlInput").value = savedUrl;
+            } else if (window.location.hostname && window.location.port) {
+                document.getElementById("apiUrlInput").value = `http://${window.location.hostname}:${window.location.port}`;
+            }
+
+            initMap();
+            checkApiHealth().then(online => {
+                if (online) {
+                    // Pre-select trip 00000015
+                    selectTrip("00000015");
+                }
+            });
+        });
+    </script>
+</body>
+</html>
