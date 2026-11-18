@@ -12,13 +12,16 @@ import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 try:
     from .preprocessor import (
         ARTIFACTS_DIR,
+        BASE_DIR,
         FEATURE_COLS,
-        STUDENT_FOLDER,
+        TEST_DIR,
+        TRAIN_DIR,
         clean_gps_track,
         extract_trip_features,
         load_trip_data,
@@ -27,8 +30,10 @@ try:
 except ImportError:
     from preprocessor import (
         ARTIFACTS_DIR,
+        BASE_DIR,
         FEATURE_COLS,
-        STUDENT_FOLDER,
+        TEST_DIR,
+        TRAIN_DIR,
         clean_gps_track,
         extract_trip_features,
         load_trip_data,
@@ -38,6 +43,12 @@ except ImportError:
 MODELS_DIR = os.path.join(ARTIFACTS_DIR, "models")
 MODEL_PATH = os.path.join(MODELS_DIR, "random_forest.joblib")
 TRANSFORM_PATH = os.path.join(MODELS_DIR, "feature_transform.json")
+TRIP_PARTITION_DIRS = {
+    "train": TRAIN_DIR,
+    "student_test": TEST_DIR,
+    "evaluator_test": os.path.join(BASE_DIR, "evaluator_test"),
+}
+UI_PATH = os.path.join(os.path.dirname(__file__), "static", "index.html")
 
 app = FastAPI(
     title="PathSnap Map-Matching API",
@@ -98,13 +109,13 @@ def load_inference_assets():
 
 
 def resolve_trip_dir(trip_id: str) -> str:
-    for partition in ("train", "student_test"):
-        trip_dir = os.path.join(STUDENT_FOLDER, partition, trip_id)
+    for partition_dir in TRIP_PARTITION_DIRS.values():
+        trip_dir = os.path.join(partition_dir, trip_id)
         if os.path.isdir(trip_dir):
             return trip_dir
     raise HTTPException(
         status_code=404,
-        detail=f"Trip '{trip_id}' was not found in the local train or student_test data.",
+        detail=f"Trip '{trip_id}' was not found in the local dataset partitions.",
     )
 
 
@@ -244,6 +255,25 @@ def health():
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"status": "ok", "model": "random_forest"}
+
+
+@app.get("/", include_in_schema=False)
+def home():
+    return FileResponse(UI_PATH)
+
+
+@app.get("/trips")
+def list_trips():
+    trips = []
+    for partition, partition_dir in TRIP_PARTITION_DIRS.items():
+        if not os.path.isdir(partition_dir):
+            continue
+        trips.extend(
+            {"trip_id": name, "partition": partition}
+            for name in sorted(os.listdir(partition_dir))
+            if os.path.isdir(os.path.join(partition_dir, name))
+        )
+    return trips
 
 
 @app.post("/predict", response_model=TripPredictionResponse)

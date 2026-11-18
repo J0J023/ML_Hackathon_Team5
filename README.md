@@ -63,7 +63,10 @@ ML_Hackathon/
 ├── src/
 │   ├── api.py                         # FastAPI trip prediction service
 │   ├── eda.py                         # Exploratory Data Analysis & visualizer
+│   ├── evaluate_api.py                # Evaluate predictions on all labeled evaluator trips
 │   ├── preprocessor.py                # Candidate generator & feature engineering
+│   ├── static/
+│   │   └── index.html                 # Minimal PathSnap prediction UI
 │   └── train_models.py                # GroupKFold cross-validation & model benchmarks
 ├── notebooks/
 │   ├── decision_tree_pipeline.ipynb   # Decision Tree training & evaluation walkthrough
@@ -143,7 +146,18 @@ the repository root:
 uvicorn src.api:app --reload
 ```
 
-Open `http://127.0.0.1:8000/docs` to try `POST /predict`. The request `trip_id`
-must name a trip folder in the local `train` or `student_test` partition. The
+Open `http://127.0.0.1:8000/` for the UI or `http://127.0.0.1:8000/docs` to try
+`POST /predict`. The request `trip_id` must name a local trip folder. The
 response includes classifier-only and Viterbi predictions; accuracy metrics
 are populated only for trips with a ground-truth `.route` file.
+
+Run the evaluator partition through the same prediction service and save
+per-trip and aggregate results with:
+
+```powershell
+python src/evaluate_api.py
+```
+
+The evaluator output is written to
+`artifacts/evaluator_test_results.csv` and
+`artifacts/evaluator_test_results.json`.

@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PathSnap | Map Matching</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      color: #172033;
+      background: #f3f6fb;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; }
+    header {
+      padding: 22px clamp(20px, 5vw, 64px);
+      color: #fff;
+      background: linear-gradient(115deg, #163c72, #147d91);
+    }
+    header h1 { margin: 0; font-size: 1.45rem; letter-spacing: .02em; }
+    header p { margin: 7px 0 0; color: #d7ecf2; font-size: .95rem; }
+    main { width: min(1120px, calc(100% - 32px)); margin: 28px auto 52px; }
+    .panel {
+      padding: 22px;
+      border: 1px solid #e0e6ef;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 8px 24px #1720330b;
+    }
+    .controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+    label { display: grid; gap: 7px; color: #526078; font-size: .85rem; font-weight: 650; }
+    select, button {
+      min-height: 42px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 0 12px;
+      font: inherit;
+    }
+    select { min-width: min(300px, 70vw); color: #172033; background: #fff; }
+    button {
+      padding: 0 19px;
+      border: 0;
+      color: #fff;
+      background: #176f86;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover { background: #115c70; }
+    button:disabled { cursor: wait; opacity: .6; }
+    .hint { margin: 13px 0 0; color: #68758a; font-size: .85rem; }
+    #status { min-height: 1.4em; margin: 14px 0 0; color: #9c2c2c; }
+    #results[hidden] { display: none; }
+    .results { display: grid; gap: 18px; margin-top: 20px; }
+    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .metric {
+      padding: 16px;
+      border: 1px solid #e1e8f0;
+      border-radius: 11px;
+      background: #fbfcfe;
+    }
+    .metric span { display: block; color: #657187; font-size: .8rem; }
+    .metric strong { display: block; margin-top: 8px; font-size: 1.35rem; }
+    h2 { margin: 0 0 14px; font-size: 1.05rem; }
+    .map-wrap { overflow: hidden; border: 1px solid #e1e8f0; border-radius: 10px; background: #f8fafc; }
+    svg { display: block; width: 100%; height: auto; min-height: 230px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px; color: #566176; font-size: .85rem; }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; }
+    .arc-list { max-height: 100px; overflow: auto; color: #4a566a; font: .85rem ui-monospace, monospace; overflow-wrap: anywhere; }
+    @media (max-width: 720px) {
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .panel { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>PathSnap</h1>
+    <p>GPS-to-road map matching · Random Forest + Viterbi</p>
+  </header>
+  <main>
+    <section class="panel" aria-labelledby="run-title">
+      <h2 id="run-title">Run a trip</h2>
+      <form id="predict-form" class="controls">
+        <label for="trip-id">Trip and partition
+          <select id="trip-id" required>
+            <option value="">Loading trips…</option>
+          </select>
+        </label>
+        <button id="submit" type="submit">Match route</button>
+      </form>
+      <p class="hint">Evaluator trips include a ground-truth route, so the accuracy metrics are available.</p>
+      <p id="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="results" class="results" hidden>
+      <div class="metrics">
+        <div class="metric"><span>Classifier-only accuracy</span><strong id="classifier-accuracy">—</strong></div>
+        <div class="metric"><span>Viterbi accuracy</span><strong id="viterbi-accuracy">—</strong></div>
+        <div class="metric"><span>Route continuity</span><strong id="continuity">—</strong></div>
+        <div class="metric"><span>Inference time</span><strong id="inference-time">—</strong></div>
+      </div>
+      <section class="panel">
+        <h2 id="map-title">Route overlay</h2>
+        <div class="map-wrap">
+          <svg id="route-map" viewBox="0 0 960 360" role="img" aria-labelledby="map-title"></svg>
+        </div>
+        <div class="legend">
+          <span><i class="dot" style="background:#2186c4"></i>Raw GPS</span>
+          <span><i class="dot" style="background:#f08b35"></i>Snapped route</span>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Predicted road segments</h2>
+        <p id="arc-count"></p>
+        <div id="arc-list" class="arc-list"></div>
+      </section>
+    </section>
+  </main>
+  <script>
+    const form = document.querySelector('#predict-form');
+    const tripSelect = document.querySelector('#trip-id');
+    const submitButton = document.querySelector('#submit');
+    const status = document.querySelector('#status');
+    const results = document.querySelector('#results');
+
+    async function loadTrips() {
+      const response = await fetch('/trips');
+      if (!response.ok) throw new Error(`Could not load trips (${response.status}).`);
+      const trips = await response.json();
+      tripSelect.replaceChildren();
+      for (const trip of trips) {
+        const option = document.createElement('option');
+        option.value = trip.trip_id;
+        option.textContent = `${trip.trip_id} — ${trip.partition}`;
+        tripSelect.append(option);
+      }
+      if (trips.length === 0) throw new Error('No local trips are available.');
+    }
+
+    function formatPercent(value) {
+      return value == null ? '—' : new Intl.NumberFormat(undefined, {
+        style: 'percent', maximumFractionDigits: 1
+      }).format(value);
+    }
+
+    function drawRoutes(rawCoordinates, predictedCoordinates) {
+      const svg = document.querySelector('#route-map');
+      const width = 960;
+      const height = 360;
+      const padding = 24;
+      svg.replaceChildren();
+      const all = [...rawCoordinates, ...predictedCoordinates];
+      const lats = all.map(point => point[0]);
+      const lons = all.map(point => point[1]);
+      const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+      const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+      const latRange = maxLat - minLat || 1e-9;
+      const lonRange = maxLon - minLon || 1e-9;
+      const coordinatesToSvg = points => points.map(([lat, lon]) => {
+        const x = padding + (lon - minLon) / lonRange * (width - 2 * padding);
+        const y = height - padding - (lat - minLat) / latRange * (height - 2 * padding);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      const ns = 'http://www.w3.org/2000/svg';
+      for (const [points, color, lineWidth] of [
+        [rawCoordinates, '#2186c4', 2],
+        [predictedCoordinates, '#f08b35', 3]
+      ]) {
+        const line = document.createElementNS(ns, 'polyline');
+        line.setAttribute('points', coordinatesToSvg(points));
+        line.setAttribute('fill', 'none');
+        line.setAttribute('stroke', color);
+        line.setAttribute('stroke-width', String(lineWidth));
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('stroke-linejoin', 'round');
+        line.setAttribute('opacity', '.88');
+        svg.append(line);
+      }
+    }
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      status.textContent = '';
+      results.hidden = true;
+      submitButton.disabled = true;
+      submitButton.textContent = 'Matching…';
+      try {
+        const response = await fetch('/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trip_id: tripSelect.value })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `Request failed (${response.status}).`);
+        document.querySelector('#classifier-accuracy').textContent =
+          formatPercent(data.metrics.classifier_only_accuracy);
+        document.querySelector('#viterbi-accuracy').textContent =
+          formatPercent(data.metrics.hmm_viterbi_accuracy);
+        document.querySelector('#continuity').textContent =
+          formatPercent(data.metrics.route_continuity);
+        document.querySelector('#inference-time').textContent =
+          `${data.metrics.inference_time_ms.toFixed(1)} ms`;
+        document.querySelector('#map-title').textContent = `Route overlay · ${data.trip_id}`;
+        document.querySelector('#arc-count').textContent =
+          `${data.predicted_arc_ids.length} GPS observations matched`;
+        document.querySelector('#arc-list').textContent =
+          data.predicted_arc_ids.slice(0, 100).join(', ') +
+          (data.predicted_arc_ids.length > 100 ? ' …' : '');
+        drawRoutes(data.raw_gps_coordinates, data.predicted_coordinates);
+        results.hidden = false;
+      } catch (error) {
+        status.textContent = error.message || 'Prediction failed.';
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = 'Match route';
+      }
+    });
+
+    loadTrips().catch(error => {
+      tripSelect.replaceChildren();
+      const option = document.createElement('option');
+      option.textContent = 'Trip list unavailable';
+      tripSelect.append(option);
+      status.textContent = error.message || 'Could not load trips.';
+    });
+  </script>
+</body>
+</html>
