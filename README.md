@@ -1,149 +1,122 @@
 # PathSnap: Distributed Map-Matching & Route Reconstruction
 
 **PES University — Department of Computer Science and Engineering**  
-**UE24CS352A: Machine Learning**  
-**Hackathon Team Repository**
+**UE24CS352A: Machine Learning — Team 5**
 
 ---
 
 ## 1. Challenge Overview
-GPS tracking systems inherently suffer from urban canyon multipath reflections, signal dropout, and low sampling frequencies (~1 Hz). As a result, noisy observations deviate onto parallel streets or jump across obstacles.
+GPS tracking systems suffer from urban building multipath reflections, signal dropouts, and ~1 Hz sampling noise, causing raw observations to drift onto parallel streets or across buildings.
 
-**PathSnap** is an end-to-end, distributed machine learning system that accurately matches noisy raw GPS trajectories to a road network graph and reconstructs valid, topologically continuous vehicle trajectories.
+**PathSnap** is an end-to-end distributed machine learning system that maps noisy GPS observations onto a directed road network and reconstructs continuous, topologically valid vehicle trajectories.
 
 ---
 
-## 2. System Architecture & Work Process
+## 2. System Pipeline
 
 ```
-[Raw GPS Track (.track)] 
+[Raw GPS Track (.track) + Road Network (.nodes, .arcs)]
            │
            ▼
-[1. Candidate Generation] (Spatial multi-point KD-Tree indexing within R = 60m)
+[1. Data Cleaning & Spatial Candidate Generation] (src/preprocessor.py — 5-point KD-Tree within 60m)
            │
            ▼
-[2. Invariant Feature Extraction] (Orthogonal distance, projection ratio, heading error, speed, kinematics)
+[2. Metric Projection & 13 Engineered Features] (dist_orthogonal, proj_ratio, heading_cos, speed, ...)
            │
            ▼
-[3. Tree-Based ML Scoring Model] (Decision Tree Classifier)
-           │
-           ▼ (Candidate emission probabilities)
-[4. HMM & Viterbi Decoder] (Road connectivity and movement-distance consistency)
+[3. 6-Model Supervised Benchmark] (src/train_models.py & notebooks/ — LR, GNB, KNN, DT, RF, MLP)
            │
            ▼
-[Reconstructed Route & Continuous Trajectory]
+[4. Bayesian Hyperparameter Optimisation] (src/bayesian_opt_mlp.py — Optuna TPE, 25 trials)
            │
            ▼
-[FastAPI Backend (Laptop 1) <---> Evaluator UI (Laptop 2)]
+[5. HMM & Viterbi Route Reconstruction] (src/hmm_decoder.py — Log-space trellis + Dijkstra transitions)
+           │
+           ▼
+[6. Two-Laptop Deployment] (Laptop 1: FastAPI src/api.py <---> Laptop 2: Evaluator UI)
 ```
 
 ---
 
 ## 3. Repository Structure
+
 ```
-ML_Hackathon/
-├── artifacts/
-│   ├── dataset_inventory.csv          # Full audit of all 90 trip partitions
-│   ├── eda_summary.json               # Key dataset statistics and sampling properties
-│   ├── model_comparison_table.csv     # Phase 1 model comparison table
-│   ├── model_comparison_results.json  # Raw metric logs
-│   ├── maps/
-│   │   └── eda_map_trip_00000001.html # Interactive Folium ground-truth & GPS map
-│   ├── models/                        # Serialized model weights & feature scalers
-│   │   ├── decision_tree.joblib
-│   │   ├── random_forest.joblib
-│   │   └── scaler.joblib
-│   └── plots/                         # Diagnostic and EDA charts
-│       ├── trajectory_distributions.png
-│       ├── road_network_complexity.png
-│       ├── sampling_interval_dist.png
-│       ├── model_performance_comparison.png
-│       ├── model_confusion_matrices.png
-│       └── tree_feature_importances.png
+ML_Hackathon_Team5/
+├── docs/
+│   ├── PathSnap_Technical_Report.md     # Full consolidated technical report (Markdown)
+│   └── PathSnap_Technical_Report.pdf    # Consolidated technical report (PDF deliverable)
+├── notebooks/                           # Individual model experimentation notebooks
+│   ├── logistic_regression_pipeline.ipynb
+│   ├── gaussian_naive_bayes_pipeline.ipynb
+│   ├── knn_pathsnap.ipynb
+│   ├── decision_tree_pipeline.ipynb
+│   ├── random_forest_pipeline.ipynb
+│   └── mlp_pipeline.ipynb
 ├── src/
-│   ├── api.py                         # FastAPI trip prediction service
-│   ├── eda.py                         # Exploratory Data Analysis & visualizer
-│   ├── preprocessor.py                # Candidate generator & feature engineering
-│   └── train_models.py                # GroupKFold cross-validation & model benchmarks
-├── notebooks/
-│   ├── decision_tree_pipeline.ipynb   # Decision Tree training & evaluation walkthrough
-│   ├── logistic_regression_pipeline.ipynb # Logistic Regression training & evaluation
-│   └── gaussian_naive_bayes_pipeline.ipynb # Gaussian Naive Bayes training & evaluation
+│   ├── eda.py                           # Exploratory data analysis & Folium ground-truth map
+│   ├── preprocessor.py                  # Cleaning, metric projection & 13-feature extraction
+│   ├── train_models.py                  # GroupKFold cross-validation & multi-model benchmark
+│   ├── bayesian_opt_mlp.py              # Optuna TPE Bayesian hyperparameter optimisation
+│   ├── hmm_decoder.py                   # HMM + Viterbi route decoder & Folium route map
+│   ├── generate_report_plots.py         # Diagnostic & comparison visualisations
+│   └── api.py                           # FastAPI backend server for Laptop 1
+├── artifacts/
+│   ├── dataset_inventory.csv            # Audit of all 90 train/student_test trips
+│   ├── eda_summary.json                 # Dataset summary statistics
+│   ├── model_comparison_table.csv       # Consolidated model benchmark table
+│   ├── bayesian_mlp_comparison_table.csv# Untuned vs. Bayesian-tuned MLP comparison
+│   ├── optuna_mlp_trials.csv            # Full 25-trial Optuna search log
+│   ├── optuna_mlp_best_params.json      # Best hyperparameters found by Optuna
+│   ├── hmm_comparison_table.csv         # Classifier-only vs. HMM/Viterbi per-trip results
+│   ├── maps/
+│   │   ├── eda_map_trip_00000001.html
+│   │   └── hmm_reconstructed_route_trip_00000000.html
+│   ├── models/                          # Saved .joblib models & feature_transform.json
+│   └── plots/                           # All EDA, model, Optuna, and HMM plots
 ├── requirements.txt
-├── README.md
-└── .gitignore
+└── README.md
 ```
 
 ---
 
-## 4. Phase 1 Evaluation Results (Tree-Based Focus)
+## 4. Summary of Experimental Results
 
-### A. Candidate Generation & Recall
-* **Average Candidate Miss Rate**: $5.50\%$ (Candidate Recall: **$94.50\%$**).
-* **Average Candidates per Observation**: $\approx 10\text{–}12$ road segment candidates.
-
-### B. Tree-Based Model Comparison Table
-
-| Model | Algorithm Family | Key Configuration | CV Macro F1 | Student Top-1 Acc | Student Macro F1 | Log Loss | Inference Latency |
+### A. Model Comparison (`artifacts/model_comparison_table.csv`)
+| Model | Algorithm Family | Key Configuration | CV Macro F1 | Student Top-1 Acc | Student Macro F1 | Log Loss | Inference Time |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Decision Tree** | Tree-based | `max_depth=12, min_samples_split=20` | **0.8404** | **0.7094** | **0.8070** | 0.4633 | < 0.001 ms/obs |
-| **Random Forest** | Ensemble | `n_estimators=100, max_depth=14` | **0.8441** | **0.7113** | **0.8202** | 0.1649 | 0.001 ms/obs |
+| **Logistic Regression** | Linear & Probabilistic | `C=1.0, solver='lbfgs', max_iter=500` | 0.7837 | 0.7239 | 0.7954 | 0.2181 | 0.000 ms/obs |
+| **Gaussian Naive Bayes** | Probabilistic | `var_smoothing=1e-9` | 0.5989 | 0.6918 | 0.6795 | 0.9653 | 0.000 ms/obs |
+| **K-Nearest Neighbors** | Instance-based | `n_neighbors=7, weights='distance'` | 0.8436 | 0.7067 | 0.8201 | 0.7749 | 0.033 ms/obs |
+| **Decision Tree** | Tree-based | `max_depth=12, min_samples_split=20` | 0.8534 | 0.7904 | 0.8433 | 0.2366 | 0.000 ms/obs |
+| **Random Forest** | Ensemble | `n_estimators=100, max_depth=14` | **0.8551** | 0.7347 | 0.8490 | **0.1466** | 0.001 ms/obs |
+| **Multi-Layer Perceptron** | Neural Networks | `hidden_layer_sizes=(64, 32), early_stopping=True` | 0.8529 | **0.8112** | **0.8508** | **0.1466** | 0.000 ms/obs |
 
-### C. Feature Importance Analysis
-From Random Forest and Decision Tree feature attributions:
-1. `dist_orthogonal` ($33.9\%$): Perpendicular distance from ping to candidate segment line.
-2. `proj_ratio` ($22.7\%$): Projection parameter along segment $[0, 1]$.
-3. `heading_cos` & `heading_diff` ($19.0\%$ combined): Alignment between trajectory movement vector and road direction.
-4. `arc_length` ($9.2\%$): Physical length of the segment.
+### B. Bayesian Hyperparameter Optimisation (`artifacts/bayesian_mlp_comparison_table.csv`)
+| Model Variant | Architecture | Activation | CV Macro F1 | Student Top-1 Acc | Student Macro F1 | Log Loss | Inference Time |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Untuned MLP** | `(64, 32)` | `relu` | 0.8529 | **80.18%** | **0.8458** | 0.1599 | **0.0002 ms/obs** |
+| **Tuned MLP (Optuna Best)** | `(64, 64)` | `tanh` | **0.8900** | 77.61% | 0.8429 | **0.1594** | 0.0007 ms/obs |
 
 ---
 
-## 5. Setup & Execution Instructions
+## 5. Installation & Execution
 
-### Installation
 ```bash
-# Clone the repository
-git clone https://github.com/J0J023/ML_Hackathon.git
-cd ML_Hackathon
-
-# Create and activate virtual environment
+# 1. Create and activate virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-```
 
-### Reproduce Phase 1 (EDA & Model Training)
-```bash
-# 1. Run Exploratory Data Analysis & generate Folium map
+# 2. Run EDA & Preprocessing
 python src/eda.py
-
-# 2. Extract candidates, compute features, impute missing values, and scale using training trips
 python src/preprocessor.py
 
-# 3. Train models with GroupKFold cross-validation & benchmark using the exported shared matrices
+# 3. Train & Benchmark Models + Bayesian Optimisation + HMM Decoding
 python src/train_models.py
+python src/bayesian_opt_mlp.py
+python src/hmm_decoder.py
+python src/generate_report_plots.py
+
+# 4. Start the FastAPI Server on Laptop 1
+uvicorn src.api:app --host 0.0.0.0 --port 8000
 ```
-
-The preprocessor exports `artifacts/train_features.parquet` and
-`artifacts/test_features.parquet` (or compressed CSV fallbacks). Feature
-imputation and scaling are fitted on the training trips only; all models consume
-the same exported feature columns. The fitted medians and scaling parameters are
-saved in `artifacts/models/feature_transform.json`.
-The benchmark trains Logistic Regression, Gaussian Naive Bayes, K-Nearest
-Neighbors, Decision Tree, and Random Forest models.
-
-### Run the map-matching API
-
-Train the models and build the feature transform first, then start the API from
-the repository root:
-
-```powershell
-uvicorn src.api:app --reload
-```
-
-Open `http://127.0.0.1:8000/docs` to try `POST /predict`. The request `trip_id`
-must name a trip folder in the local `train` or `student_test` partition. The
-response includes classifier-only and Viterbi predictions; accuracy metrics
-are populated only for trips with a ground-truth `.route` file.
